@@ -107,7 +107,7 @@
             }
         },
         {
-           "id": "4",
+            "id": "4",
             "type": "wms",
             "title": "PDOK Wijken",
             "groupId": "",
@@ -400,7 +400,10 @@
         },
         {
             "id": "chat",
-            "enabled": true
+            "enabled": true,
+            "settings": {
+                "apiUrl": "http://localhost:8000"
+            }
         }
     ]
 }

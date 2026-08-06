@@ -36,6 +36,9 @@
 	import { filter } from "@observablehq/plot";
 	import MapToolIsochrones from "$lib/components/ui/components/MapTools/MapToolIsochrones/MapToolIsochrones.svelte";
 
+	import MapToolChat from "./ui/components/MapTools/MapToolChat/MapToolChat.svelte";
+	import ChatPanel from "./ui/components/MapTools/MapToolChat/ChatPanel.svelte";
+
 	const settings = writable<any>({});
 	const enabledTools = writable<Array<string>>(new Array<string>());
 	const base = process.env.APP_URL;
@@ -248,6 +251,10 @@
 					<MapToolInfo />
 				{/if}
 
+									{#if $enabledTools.includes("chat")}
+						<MapToolChat />
+					{/if}
+
 				{#if $enabledTools.includes("help")}
 					<MapToolHelp />
 				{/if}
@@ -255,6 +262,8 @@
 				{#if $enabledTools.includes("cesium")}
 					<MapToolCesiumControls />
 				{/if}
+
+				
 
 				{#if $enabledTools.includes("config_switcher")}
 					<MapToolConfigSwitcher />
@@ -268,10 +277,14 @@
 						<Map />
 
 					{#if !$enabledTools.includes("flyCamera")}
-					<MapControls />												
+					<MapControls />
 					{:else}
-					<POVMapControls />												
+					<POVMapControls />
 					   {/if}
+
+					{#if $enabledTools.includes("chat")}
+						<ChatPanel />
+					{/if}
 				</div>
 			</div>
 		{/if}
