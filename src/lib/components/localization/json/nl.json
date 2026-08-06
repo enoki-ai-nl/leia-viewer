@@ -30,6 +30,9 @@
         "geocoder": {
             "search": "Zoek Locatie"
         },
+        "chat": {
+            "label": "Chat"
+        },
         "info": {
             "label": "Informatie",
             "close": "Sluiten",

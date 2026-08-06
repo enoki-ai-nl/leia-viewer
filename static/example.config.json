@@ -362,7 +362,7 @@
         },
         {
             "id": "stories",
-            "enabled": false
+            "enabled": true
         },
         {
             "id": "measure",
@@ -370,7 +370,7 @@
         },
         {
             "id": "search",
-            "enabled": false
+            "enabled": true
         },
         {
             "id": "geocoder",
@@ -385,7 +385,7 @@
         },
         {
             "id": "flyCamera",
-            "enabled": false
+            "enabled": true
         },
         {
             "id": "language",
@@ -396,6 +396,10 @@
         },
         {
             "id": "github",
+            "enabled": true
+        },
+        {
+            "id": "chat",
             "enabled": true
         }
     ]
