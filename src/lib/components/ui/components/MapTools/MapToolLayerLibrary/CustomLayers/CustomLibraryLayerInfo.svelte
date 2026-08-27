@@ -19,6 +19,8 @@
     $: settings = custom.settingsInput;
     $: added = custom.added;
 
+    $: featureTypes = custom.availableFeatureTypes;
+
     $: typeValidation = custom.validType;
     $: urlValidation = custom.validUrl;
     $: isValid = custom.isValid;
@@ -59,6 +61,7 @@
                     items={[
                         { id: "3dtiles", text: "3D Tiles" },
                         { id: "wms", text: "WMS" },
+                        { id: "wfs", text: "WFS"},
                         { id: "wmts", text: "WMTS" },
                         { id: "geojson", text: "GeoJSON" },
                         { id: "modelanimation", text: "Animated model from GeoJSON" },
@@ -89,6 +92,36 @@
                         bind:value={$settings.featureName}
                         invalid={!$settings.featureName}
                     />
+                </div>
+                <div class="input-field">
+                    <div class="input-field-label">Content type</div>
+                    <TextInput
+                        placeholder={$_("tools.layerLibrary.contentTypePlaceholder")}
+                        bind:value={$settings.contenttype}
+                    />
+                </div>
+            {/if}
+
+            {#if $type === "wfs"}
+                <div class="input-field">
+                    <div class="input-field-label">Feature type</div>
+                    <!-- De dienst vertelt zelf welke feature types hij aanbiedt, dus
+                         laat kiezen in plaats van blind laten intypen. Levert de
+                         catalogus niets op, dan blijft handmatige invoer over. -->
+                    {#if $featureTypes.length > 0}
+                        <Dropdown
+                            hideLabel
+                            selectedId={$settings.featureType}
+                            items={$featureTypes.map((ft) => ({ id: ft.name, text: ft.title }))}
+                            on:select={(e) => ($settings.featureType = e.detail.selectedId)}
+                            invalid={!$settings.featureType}
+                        />
+                    {:else}
+                        <TextInput
+                            bind:value={$settings.featureType}
+                            invalid={!$settings.featureType}
+                        />
+                    {/if}
                 </div>
                 <div class="input-field">
                     <div class="input-field-label">Content type</div>

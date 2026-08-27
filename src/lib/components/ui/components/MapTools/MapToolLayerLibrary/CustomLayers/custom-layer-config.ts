@@ -1,6 +1,7 @@
 import { LayerConfig } from "$lib/components/map-core/layer-config";
 import { Dispatcher } from "$lib/components/map-core/event/dispatcher";
 import { get, writable, type Unsubscriber, type Writable } from "svelte/store";
+import { fetchWfsFeatureTypes, type WfsFeatureType } from "$lib/components/map-cesium/module/providers/wfs-capabilities";
 
 
 
@@ -16,6 +17,12 @@ export class CustomLayerConfigTracker extends Dispatcher {
 
 	public validType: Writable<boolean> = writable(false);
 	public validUrl: Writable<boolean> = writable(false);
+
+	// Feature types die de ingevulde WFS zelf aanbiedt. Leeg zolang er geen
+	// geldige WFS-URL staat, of wanneer de dienst geen bruikbare catalogus geeft -
+	// het formulier valt dan terug op handmatige invoer.
+	public availableFeatureTypes: Writable<Array<WfsFeatureType>> = writable([]);
+	private lastCapabilitiesUrl: string = "";
 
 	private unsubscribers: Array<Unsubscriber> = new Array<Unsubscriber>();
 
@@ -66,16 +73,37 @@ export class CustomLayerConfigTracker extends Dispatcher {
 
 	private onInputChange(): void {
 		this.validateLayerConfig();
+		this.refreshFeatureTypes();
 		this.dispatch("updated", {});
 		if (this.unsubscribers[3]) this.added.set(false); // Checking this.unsubscribers[3] to see if setup is finished
 	}
 
+	/**
+	 * Haalt de feature types op zodra er een geldige WFS-URL staat. Onthoudt welke
+	 * URL het laatst is opgehaald, want `onInputChange` vuurt bij elke toetsaanslag
+	 * en anders zou elke letter een nieuw verzoek de deur uit sturen.
+	 */
+	private async refreshFeatureTypes(): Promise<void> {
+		if (this.layerConfig.type !== "wfs" || !get(this.validUrl)) {
+			this.lastCapabilitiesUrl = "";
+			this.availableFeatureTypes.set([]);
+			return;
+		}
+
+		const url = get(this.settingsInput)?.url ?? "";
+		if (url === this.lastCapabilitiesUrl) return;
+		this.lastCapabilitiesUrl = url;
+
+		this.availableFeatureTypes.set(await fetchWfsFeatureTypes(url));
+	}
+
 	private validateType(type: string): boolean {
-		return ["3dtiles", "wms", "wmts", "geojson", "modelanimation", "arcgis"].includes(type);
+		return ["3dtiles", "wms", "wfs", "wmts", "geojson", "modelanimation", "arcgis"].includes(type);
 	}
 
 	private validateSettings(settings: any = this.layerConfig.settings): boolean {
 		if (["wms", "wmts"].includes(this.layerConfig.type) && !settings["featureName"]) return false;
+		if (this.layerConfig.type === "wfs" && !settings["featureType"]) return false;
 		if (this.layerConfig.type === "modelAnimation" && (!settings["modelUrl"] || !settings["timeKey"])) return false;
 		else return true;
 	}
@@ -116,6 +144,10 @@ export class CustomLayerConfigTracker extends Dispatcher {
 		if (!url || !get(this.validUrl)) return false;
 		if (this.layerConfig.type === "wms") url += "?service=wms&request=getcapabilities";
 		if (this.layerConfig.type === "wmts") url += "?service=wmts&request=getcapabilities";
+		// Een kale WFS-URL zonder parameters geeft bij veel diensten een foutstatus,
+		// waardoor de laag ten onrechte als onbereikbaar zou gelden. Knip wat de
+		// gebruiker plakte af en vraag zelf de catalogus op.
+		if (this.layerConfig.type === "wfs") url = `${url.split("?")[0]}?service=wfs&request=getcapabilities`;
 
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 1000); // if no response after 1000ms, then consider the request as failed

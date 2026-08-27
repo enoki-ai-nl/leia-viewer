@@ -10,7 +10,16 @@ export class WfsLayer extends CesiumLayer<WFSProviderCesium> {
 
 	constructor(map: Map, config: LayerConfig) {
         super(map, config);
-        this.source = new WFSProviderCesium(this.config.settings.url, this.config.settings.options);
+
+        const settings = this.config.settings;
+        this.source = new WFSProviderCesium(
+            settings.url,
+            settings.options ?? {
+                featureType: settings.featureType,
+                version: settings.version
+            }
+        );
+        this.source.configId = this.config.id;
     }
 
     public async addToMap(): Promise<void> {
