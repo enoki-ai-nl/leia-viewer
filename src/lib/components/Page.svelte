@@ -283,7 +283,7 @@
 					   {/if}
 
 					{#if $enabledTools.includes("chat")}
-						<ChatPanel />
+						<ChatPanel {map} />
 					{/if}
 				</div>
 			</div>
