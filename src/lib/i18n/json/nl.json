@@ -72,6 +72,42 @@
                 "expired": "Niet meer van toepassing"
             },
             "signInPrompt": "Vul je sleutel in om in te loggen (bijvoorbeeld user1):",
+            "toolSteps": {
+                "sql_db_query": {
+                    "pending": "SQL-query uitvoeren…",
+                    "done": "SQL-query uitgevoerd"
+                },
+                "sql_db_schema": {
+                    "pending": "Tabelschema ophalen…",
+                    "done": "Tabelschema opgehaald"
+                },
+                "list_datasets": {
+                    "pending": "Datasets opvragen…",
+                    "done": "Datasets opgevraagd"
+                },
+                "wfs_get_feature": {
+                    "pending": "Objecten ophalen bij WFS-dienst…",
+                    "done": "Objecten opgehaald bij WFS-dienst"
+                },
+                "wfs_load_to_table": {
+                    "pending": "WFS-laag in een tabel laden…",
+                    "done": "WFS-laag in een tabel geladen"
+                },
+                "geonetwork_search_datasets": {
+                    "pending": "Datasetcatalogus doorzoeken…",
+                    "done": "Datasetcatalogus doorzocht"
+                },
+                "list_map_layers": {
+                    "pending": "Lagen op de kaart opvragen…",
+                    "done": "Lagen op de kaart opgevraagd"
+                },
+                "fallback": {
+                    "pending": "Tool {tool} aanroepen…",
+                    "done": "Tool {tool} afgerond"
+                },
+                "waiting": "Wachten op resultaat…",
+                "noResult": "Geen resultaat ontvangen."
+            },
             "errors": {
                 "noConnection": "Geen verbinding met de assistent.",
                 "noApiUrl": "De backend-URL is niet bekend.",

@@ -7,7 +7,7 @@ import type { Map } from "$lib/map-cesium/map";
 import { getWfsAttributeNames } from "$lib/map-cesium/providers/wfs-attributes";
 
 import { chatApiUrl } from "./chat-store";
-import type { ChatEvent, UiEvent } from "./chat-types";
+import type { ChatEvent, ToolEvent, UiEvent } from "./chat-types";
 import { exportConversation } from "./conversation-export";
 import { authHeaders, getUserKey } from "./user-key";
 import { getUiTool, toAgUiTools } from "./ui-tools/tools";
@@ -52,9 +52,6 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 	/* De AG-UI-client houdt het gesprek bij en stuurt het bij elke vraag opnieuw mee. */
 	let agent: HttpAgent | undefined;
 
-	/* tool_call_id -> toolnaam, om een resultaat bij zijn tool te tonen. */
-	const toolNames: Record<string, string> = {};
-
 	/* Instructies die op de keuze van de gebruiker wachten. */
 	const awaiting: Record<string, UiCall> = {};
 
@@ -66,6 +63,13 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 	let execution: Promise<void> = Promise.resolve();
 
 	const push = (event: ChatEvent) => events.update((list) => [...list, event]);
+
+	/* Een backend-tool krijgt zijn resultaat bij de stap van zijn aanroep. */
+	function patchTool(toolCallId: string, patch: Partial<ToolEvent>) {
+		events.update((list) =>
+			list.map((e) => (e.type === "tool" && e.toolCallId === toolCallId ? { ...e, ...patch } : e))
+		);
+	}
 
 	function patchUi(toolCallId: string, patch: Partial<UiEvent>) {
 		events.update((list) =>
@@ -140,19 +144,15 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 			if (textMessageBuffer.trim()) push({ type: "answer", markdown: textMessageBuffer });
 		},
 
-		onToolCallStartEvent: ({ event }) => {
-			toolNames[event.toolCallId] = event.toolCallName;
-		},
-
 		onToolCallEndEvent: ({ event, toolCallName, toolCallArgs }) => {
-			if (getUiTool(toolCallName)) handleUiCall(event.toolCallId, toolCallName, toolCallArgs);
-			else push({ type: "call", tool: toolCallName, args: toolCallArgs });
+			const toolCallId = event.toolCallId;
+			if (getUiTool(toolCallName)) handleUiCall(toolCallId, toolCallName, toolCallArgs);
+			else push({ type: "tool", toolCallId, tool: toolCallName, args: toolCallArgs, status: "pending" });
 		},
 
 		onToolCallResultEvent: ({ event }) => {
-			const tool = toolNames[event.toolCallId] ?? null;
 			if (event.metadata?.error) {
-				push({ type: "error", tool, error: String(event.content) });
+				patchTool(event.toolCallId, { status: "error", error: String(event.content) });
 				return;
 			}
 			let content: unknown = event.content;
@@ -161,7 +161,7 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 			} catch {
 				/* gewone tekst: laten zoals hij is */
 			}
-			push({ type: "result", tool, content });
+			patchTool(event.toolCallId, { status: "done", content });
 		},
 
 		/* Geen usage betekent dat geen modelaanroep iets meldde, niet dat het nul tokens waren. */
@@ -226,6 +226,12 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 				.catch(() => {
 					/* al gemeld via onRunFailed */
 				});
+
+			/* Een aanroep zonder resultaat (de run brak af) blijft anders eeuwig "bezig". */
+			const noResult = get(_)("tools.chat.toolSteps.noResult");
+			events.update((list) =>
+				list.map((e) => (e.type === "tool" && e.status === "pending" ? { ...e, status: "error", error: noResult } : e))
+			);
 		} catch (error) {
 			/* Inloggen of de lagen ophalen mislukte: dan is de vraag niet verstuurd. */
 			console.error("Vraag niet verstuurd:", error);

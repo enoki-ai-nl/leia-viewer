@@ -72,6 +72,42 @@
                 "expired": "Plus d'actualité"
             },
             "signInPrompt": "Saisissez votre clé pour vous connecter (par exemple user1) :",
+            "toolSteps": {
+                "sql_db_query": {
+                    "pending": "Exécution de la requête SQL…",
+                    "done": "Requête SQL exécutée"
+                },
+                "sql_db_schema": {
+                    "pending": "Récupération du schéma de la table…",
+                    "done": "Schéma de la table récupéré"
+                },
+                "list_datasets": {
+                    "pending": "Liste des jeux de données…",
+                    "done": "Jeux de données listés"
+                },
+                "wfs_get_feature": {
+                    "pending": "Récupération d'objets du service WFS…",
+                    "done": "Objets récupérés du service WFS"
+                },
+                "wfs_load_to_table": {
+                    "pending": "Chargement de la couche WFS dans une table…",
+                    "done": "Couche WFS chargée dans une table"
+                },
+                "geonetwork_search_datasets": {
+                    "pending": "Recherche dans le catalogue de données…",
+                    "done": "Catalogue de données consulté"
+                },
+                "list_map_layers": {
+                    "pending": "Liste des couches de la carte…",
+                    "done": "Couches de la carte listées"
+                },
+                "fallback": {
+                    "pending": "Appel de l'outil {tool}…",
+                    "done": "Outil {tool} terminé"
+                },
+                "waiting": "En attente du résultat…",
+                "noResult": "Aucun résultat reçu."
+            },
             "errors": {
                 "noConnection": "Pas de connexion avec l'assistant.",
                 "noApiUrl": "L'URL du backend est inconnue.",

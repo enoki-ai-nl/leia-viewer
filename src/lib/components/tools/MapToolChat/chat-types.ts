@@ -12,15 +12,24 @@ export interface UiEvent {
 	detail?: string;
 }
 
+/* Een aanroep van een backend-tool en, zodra die er is, de uitkomst: JSON als het
+   dat was, anders tekst. `pending` tot het resultaat binnen is. */
+export interface ToolEvent {
+	type: "tool";
+	toolCallId: string;
+	tool: string;
+	args: unknown;
+	status: "pending" | "done" | "error";
+	content?: unknown;
+	error?: string;
+}
+
 export type ChatEvent =
 	/* De vraag van de gebruiker. */
 	| { type: "question"; text: string }
 	/* Een antwoord van de assistent, in markdown. */
 	| { type: "answer"; markdown: string }
-	/* Een aanroep van een backend-tool, met zijn argumenten. */
-	| { type: "call"; tool: string; args: unknown }
-	/* Het resultaat van zo'n aanroep: JSON als het dat was, anders tekst. */
-	| { type: "result"; tool: string | null; content: unknown }
+	| ToolEvent
 	| UiEvent
-	/* Een mislukte tool-aanroep heeft een toolnaam, een mislukte run niet. */
-	| { type: "error"; tool?: string | null; error: string };
+	/* Een mislukte run, of een vraag die niet verstuurd kon worden. */
+	| { type: "error"; error: string };

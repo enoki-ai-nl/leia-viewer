@@ -72,6 +72,42 @@
                 "expired": "No longer applicable"
             },
             "signInPrompt": "Enter your key to sign in (for example user1):",
+            "toolSteps": {
+                "sql_db_query": {
+                    "pending": "Executing SQL query…",
+                    "done": "SQL query executed"
+                },
+                "sql_db_schema": {
+                    "pending": "Fetching table schema…",
+                    "done": "Table schema fetched"
+                },
+                "list_datasets": {
+                    "pending": "Listing datasets…",
+                    "done": "Datasets listed"
+                },
+                "wfs_get_feature": {
+                    "pending": "Fetching features from WFS service…",
+                    "done": "Fetched features from WFS service"
+                },
+                "wfs_load_to_table": {
+                    "pending": "Loading WFS layer into a table…",
+                    "done": "WFS layer loaded into a table"
+                },
+                "geonetwork_search_datasets": {
+                    "pending": "Searching dataset catalog…",
+                    "done": "Dataset catalog searched"
+                },
+                "list_map_layers": {
+                    "pending": "Listing layers on the map…",
+                    "done": "Layers on the map listed"
+                },
+                "fallback": {
+                    "pending": "Calling tool {tool}…",
+                    "done": "Tool {tool} finished"
+                },
+                "waiting": "Waiting for result…",
+                "noResult": "No result received."
+            },
             "errors": {
                 "noConnection": "No connection to the assistant.",
                 "noApiUrl": "The backend URL is unknown.",
