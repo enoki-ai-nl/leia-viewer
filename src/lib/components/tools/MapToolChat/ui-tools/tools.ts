@@ -1,4 +1,7 @@
 import { get } from "svelte/store";
+import * as Cesium from "cesium";
+
+import { getCameraPositionFromBoundingSphere } from "$lib/map-cesium/utils/layer-utils";
 
 import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
@@ -446,6 +449,82 @@ const setLayerStyle: UiTool<SetStyleArgs> = {
 	}
 };
 
+/* --- zoom_to_location -------------------------------------------------------------
+   Naar een plek op de kaart, met de coördinaten die geocode_location (PDOK Locatieserver,
+   backend/app/src/services/geocoding.py) teruggaf: een gebied naar zijn bounding box, een
+   punt (adres) op straatniveau. fly_to werkt alleen op lagen. */
+
+interface ZoomArgs {
+	lon: number;
+	lat: number;
+	bbox?: [number, number, number, number];
+	name?: string;
+}
+
+/* Rond een punt: een paar honderd meter, zodat een adres en zijn straat in beeld zijn. */
+const POINT_MARGIN_DEGREES = 0.003;
+
+function finiteNumber(obj: Record<string, unknown>, key: string): number {
+	const value = typeof obj[key] === "string" ? Number(obj[key]) : obj[key];
+	if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`"${key}" moet een getal zijn.`);
+	return value;
+}
+
+const zoomToLocation: UiTool<ZoomArgs> = {
+	name: "zoom_to_location",
+	description:
+		"Move the map view to a place, address or area. Use the lon, lat and bbox exactly as geocode_location returned " +
+		"them - never guess coordinates. With a bbox the whole area is shown; without one (an address), the street level.",
+	defaultApproval: "auto",
+	parameters: () => ({
+		type: "object",
+		properties: {
+			lon: { type: "number", description: "Longitude, WGS84 (EPSG:4326)." },
+			lat: { type: "number", description: "Latitude, WGS84 (EPSG:4326)." },
+			bbox: {
+				type: "array",
+				items: { type: "number" },
+				minItems: 4,
+				maxItems: 4,
+				description: "Optional [west, south, east, north] in WGS84, for an area."
+			},
+			name: { type: "string", description: "Optional name of the place, to show the user." }
+		},
+		required: ["lon", "lat"]
+	}),
+	parse: (raw) => {
+		const obj = asObject(raw);
+		const lon = finiteNumber(obj, "lon");
+		const lat = finiteNumber(obj, "lat");
+		if (lon < -180 || lon > 180 || lat < -90 || lat > 90) throw new Error('"lon"/"lat" liggen buiten de wereld; geef WGS84-graden.');
+		let bbox: ZoomArgs["bbox"];
+		if (obj.bbox !== undefined && obj.bbox !== null) {
+			const b = obj.bbox;
+			if (!Array.isArray(b) || b.length !== 4 || !b.every((v) => typeof v === "number" && Number.isFinite(v))) {
+				throw new Error('"bbox" moet [west, zuid, oost, noord] in graden zijn.');
+			}
+			const [w, s, e, n] = b as number[];
+			if (!(w <= e && s <= n && w >= -180 && e <= 180 && s >= -90 && n <= 90)) {
+				throw new Error('"bbox" moet [west, zuid, oost, noord] in graden zijn, west <= oost en zuid <= noord.');
+			}
+			bbox = [w, s, e, n];
+		}
+		return { lon, lat, bbox, name: optionalString(obj, "name") };
+	},
+	describe: (args) => `Ga naar ${args.name ? `"${args.name}"` : `${args.lat.toFixed(4)}, ${args.lon.toFixed(4)}`}`,
+	execute: async (args, { map }) => {
+		const [w, s, e, n] = args.bbox ?? [
+			args.lon - POINT_MARGIN_DEGREES,
+			args.lat - POINT_MARGIN_DEGREES,
+			args.lon + POINT_MARGIN_DEGREES,
+			args.lat + POINT_MARGIN_DEGREES
+		];
+		const sphere = Cesium.BoundingSphere.fromRectangle3D(Cesium.Rectangle.fromDegrees(w, s, e, n));
+		map.flyTo(getCameraPositionFromBoundingSphere(sphere, get(map.options.use3DMode)));
+		return `De kaart toont nu ${args.name ?? `${args.lat}, ${args.lon}`}.`;
+	}
+};
+
 /* --- ask_clarifying_questions ------------------------------------------------------- */
 
 /* Vervolgvragen met keuzeknoppen (werkitem #55), met een aanbevolen keuze (#56).
@@ -607,7 +686,7 @@ export const askClarifyingQuestions: UiTool<AskArgs> = {
 
 /* Op `UiTool<unknown>` gezet aan de rand van de lijst: aanroepers gaan altijd eerst
    langs tool.parse, en dat maakt het argumenttype betrouwbaar. */
-export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, setLayerStyle, removeLayer, askClarifyingQuestions] as unknown as UiTool<unknown>[];
+export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, setLayerStyle, removeLayer, zoomToLocation, askClarifyingQuestions] as unknown as UiTool<unknown>[];
 
 export function getUiTool(name: string): UiTool<unknown> | undefined {
 	return UI_TOOLS.find((tool) => tool.name === name);

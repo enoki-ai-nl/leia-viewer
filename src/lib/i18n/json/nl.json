@@ -47,6 +47,7 @@
                 "set_layer_visibility": "Lagen tonen of verbergen",
                 "color_layer_by_property": "Lagen kleuren op basis van een eigenschap",
                 "set_layer_style": "De kleuren van lagen instellen",
+                "zoom_to_location": "Naar een plek gaan",
                 "ask_clarifying_questions": "Vervolgvragen stellen",
                 "remove_layer": "Lagen verwijderen"
             },
@@ -98,6 +99,10 @@
                 "list_datasets": {
                     "pending": "Datasets opvragen…",
                     "done": "Datasets opgevraagd"
+                },
+                "geocode_location": {
+                    "pending": "Locatie opzoeken…",
+                    "done": "Locatie opgezocht"
                 },
                 "wfs_load_to_table": {
                     "pending": "WFS-laag in een tabel laden…",

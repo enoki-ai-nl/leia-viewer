@@ -47,6 +47,7 @@
                 "set_layer_visibility": "Afficher ou masquer des couches",
                 "color_layer_by_property": "Colorer des couches selon une propriété",
                 "set_layer_style": "Définir les couleurs des couches",
+                "zoom_to_location": "Aller à un lieu",
                 "ask_clarifying_questions": "Poser des questions de suivi",
                 "remove_layer": "Supprimer des couches"
             },
@@ -98,6 +99,10 @@
                 "list_datasets": {
                     "pending": "Liste des jeux de données…",
                     "done": "Jeux de données listés"
+                },
+                "geocode_location": {
+                    "pending": "Recherche du lieu…",
+                    "done": "Lieu trouvé"
                 },
                 "wfs_load_to_table": {
                     "pending": "Chargement de la couche WFS dans une table…",

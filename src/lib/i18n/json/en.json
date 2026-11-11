@@ -47,6 +47,7 @@
                 "set_layer_visibility": "Show or hide layers",
                 "color_layer_by_property": "Colour layers by a property",
                 "set_layer_style": "Set the colours of layers",
+                "zoom_to_location": "Zoom to a place",
                 "ask_clarifying_questions": "Ask follow-up questions",
                 "remove_layer": "Remove layers"
             },
@@ -98,6 +99,10 @@
                 "list_datasets": {
                     "pending": "Listing datasets…",
                     "done": "Datasets listed"
+                },
+                "geocode_location": {
+                    "pending": "Looking up the location…",
+                    "done": "Location looked up"
                 },
                 "wfs_load_to_table": {
                     "pending": "Loading WFS layer into a table…",
