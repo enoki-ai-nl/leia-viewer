@@ -10,7 +10,7 @@
 
 	   Stijl van een MVT-laag, zoals in de frontend: kleuren, lijndikte, puntgrootte, en kleuren
 	   op eigenschap. Elke wijziging bouwt de afbeeldingslaag opnieuw op (de tiles liggen vast
-	   als ze getekend zijn), dus de schuiven wachten even tot je stopt met slepen. */
+	   als ze getekend zijn); MvtLayer wacht daarmee tot de wijzigingen even stilvallen. */
 	export let layer: MvtLayer;
 
 	const { style, dataDriven } = layer;
@@ -32,11 +32,16 @@
 		}
 	}
 
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	function later(patch: Parameters<MvtLayer["setStyle"]>[0]) {
-		clearTimeout(timer);
-		timer = setTimeout(() => layer.setStyle(patch), 250);
-	}
+	/* De puntgrootte alleen bij lagen met punten. Bij een laag met alleen punten horen omlijning en
+	   lijndikte bij de punt (pointStroke*); anders bij lijnen en vlakken (stroke*). */
+	const showPointSize = layer.drawsPoints;
+	const pointOutline = layer.onlyPoints;
+	$: outlineColor = pointOutline ? $style.pointStrokeColor : $style.strokeColor;
+	$: outlineWidth = pointOutline ? $style.pointStrokeWidth : $style.strokeWidth;
+	const setOutlineColor = (color: string) =>
+		layer.setStyle(pointOutline ? { pointStrokeColor: color } : { strokeColor: color });
+	const setOutlineWidth = (width: number) =>
+		layer.setStyle(pointOutline ? { pointStrokeWidth: width } : { strokeWidth: width });
 
 	const round = (n: number) => Number(n.toPrecision(4));
 
@@ -92,14 +97,14 @@
 			</label>
 			<label>
 				{$_("tools.layerManager.strokeColor")}
-				<input type="color" value={$style.strokeColor} on:change={(e) => layer.setStyle({ strokeColor: e.currentTarget.value })} />
+				<input type="color" value={outlineColor} on:change={(e) => setOutlineColor(e.currentTarget.value)} />
 			</label>
 		</div>
 	{/if}
 
 	<div class="control-section">
 		<Slider
-			value={$style.strokeWidth}
+			value={outlineWidth}
 			labelText={$_("tools.layerManager.strokeWidth")}
 			fullWidth={true}
 			hideTextInput={true}
@@ -108,23 +113,25 @@
 			step={0.5}
 			minLabel="0"
 			maxLabel="10"
-			on:change={(e) => later({ strokeWidth: e.detail })}
+			on:change={(e) => setOutlineWidth(e.detail)}
 		/>
 	</div>
-	<div class="control-section">
-		<Slider
-			value={$style.pointRadius}
-			labelText={$_("tools.layerManager.pointRadius")}
-			fullWidth={true}
-			hideTextInput={true}
-			min={1}
-			max={15}
-			step={1}
-			minLabel="1"
-			maxLabel="15"
-			on:change={(e) => later({ pointRadius: e.detail })}
-		/>
-	</div>
+	{#if showPointSize}
+		<div class="control-section">
+			<Slider
+				value={$style.pointRadius}
+				labelText={$_("tools.layerManager.pointRadius")}
+				fullWidth={true}
+				hideTextInput={true}
+				min={1}
+				max={15}
+				step={1}
+				minLabel="1"
+				maxLabel="15"
+				on:change={(e) => layer.setStyle({ pointRadius: e.detail })}
+			/>
+		</div>
+	{/if}
 </div>
 
 <style>

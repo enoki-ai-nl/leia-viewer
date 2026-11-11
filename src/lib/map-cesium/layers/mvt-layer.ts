@@ -66,6 +66,11 @@ export class MvtLayer extends CesiumImageryLayer {
 	/* Waar de nieuwe afbeeldingslaag in de stapel komt als de oude is vervangen. */
 	private insertAt: number | undefined;
 	private reportedError = false;
+	/* Een stijlwijziging bouwt de laag opnieuw op; wijzigingen kort na elkaar (slepen aan een
+	   schuif, de assistent die twee dingen zet) worden samen één keer doorgevoerd. De stores
+	   (`style`, `dataDriven`) lopen direct mee, alleen het opnieuw tekenen wacht. */
+	private rebuildTimer: ReturnType<typeof setTimeout> | undefined;
+	private static readonly REBUILD_DELAY_MS = 250;
 
 	constructor(map: Map, config: LayerConfig) {
 		super(map, config);
@@ -195,7 +200,26 @@ export class MvtLayer extends CesiumImageryLayer {
 	}
 
 	/* Een andere stijl: een nieuwe afbeeldingslaag op de plek van de oude. */
+	/** Of de laag punten tekent (of dat onbekend is, bij gemengde geometrie). */
+	public get drawsPoints(): boolean {
+		const type = String(this.config.settings["geometryType"] ?? "");
+		return type === "" || /point/i.test(type) || /^geometry/i.test(type);
+	}
+
+	/** Alleen punten (geen lijnen of vlakken erbij): hun omlijning is pointStroke*. */
+	public get onlyPoints(): boolean {
+		return /point/i.test(String(this.config.settings["geometryType"] ?? ""));
+	}
+
 	private rebuild(): void {
+		clearTimeout(this.rebuildTimer);
+		this.rebuildTimer = setTimeout(() => {
+			this.rebuildTimer = undefined;
+			this.rebuildNow();
+		}, MvtLayer.REBUILD_DELAY_MS);
+	}
+
+	private rebuildNow(): void {
 		const layers = this.map.viewer.imageryLayers;
 		const index = layers.indexOf(this.source);
 		if (index >= 0) {
@@ -216,6 +240,10 @@ export class MvtLayer extends CesiumImageryLayer {
 	}
 
 	public removeFromMap(): void {
+		/* Een uitgestelde herbouw zou de laag anders weer toevoegen (een nieuwe source wordt
+		   vanzelf aan de kaart gehangen). */
+		clearTimeout(this.rebuildTimer);
+		this.rebuildTimer = undefined;
 		this.clearSelection();
 		super.removeFromMap();
 	}
