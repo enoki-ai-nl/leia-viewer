@@ -45,6 +45,7 @@
                 "fly_to": "De kaart naar een laag verplaatsen",
                 "set_layer_visibility": "Lagen tonen of verbergen",
                 "color_layer_by_property": "Lagen kleuren op basis van een eigenschap",
+                "set_layer_style": "De kleuren van lagen instellen",
                 "remove_layer": "Lagen verwijderen"
             },
             "export": "Exporteer gesprek als JSON",

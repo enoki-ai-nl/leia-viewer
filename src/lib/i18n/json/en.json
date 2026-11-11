@@ -45,6 +45,7 @@
                 "fly_to": "Move the map to a layer",
                 "set_layer_visibility": "Show or hide layers",
                 "color_layer_by_property": "Colour layers by a property",
+                "set_layer_style": "Set the colours of layers",
                 "remove_layer": "Remove layers"
             },
             "export": "Export conversation as JSON",

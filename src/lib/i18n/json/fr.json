@@ -45,6 +45,7 @@
                 "fly_to": "Déplacer la carte vers une couche",
                 "set_layer_visibility": "Afficher ou masquer des couches",
                 "color_layer_by_property": "Colorer des couches selon une propriété",
+                "set_layer_style": "Définir les couleurs des couches",
                 "remove_layer": "Supprimer des couches"
             },
             "export": "Exporter la conversation en JSON",

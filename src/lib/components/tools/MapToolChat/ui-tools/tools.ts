@@ -9,12 +9,14 @@ import { fetchTileInfo } from "./tiles-api";
 import { datasetMvtConfig, GAIA_GROUP_ID } from "../GaiaLayers/gaia-layers";
 
 import type { Map } from "$lib/map-cesium/map";
+import { GeoJsonLayer } from "$lib/map-cesium/layers/geojson-layer";
 import { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
+import type { LayerStyle } from "$lib/map-cesium/providers/mvt-style";
 import type { LabelledLayer } from "./layers";
 import type { UiTool, UiToolContext } from "./types";
 
 /* De viewer kent een kleinere set dan de React-frontend: alleen GeoJSON- en MVT-lagen kunnen
-   op eigenschap gekleurd worden, en er is geen `set_layer_color`. De WFS-laag geeft
+   op eigenschap gekleurd worden of eigen kleuren krijgen (`set_layer_style`). De WFS-laag geeft
    zijn objecten bij het laden een willekeurige kleur en heeft (nog) geen manier om ze
    achteraf te herkleuren. Omdat elke frontend zelf zijn tools aanmeldt, hoeft de
    backend daar niets van te weten. */
@@ -292,9 +294,97 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 	}
 };
 
+interface SetStyleArgs extends LayerRefArgs {
+	fillColor?: string;
+	strokeColor?: string;
+}
+
+function optionalColor(obj: Record<string, unknown>, key: string): string | undefined {
+	const value = optionalString(obj, key);
+	if (value !== undefined && !/^#[0-9a-fA-F]{6}$/.test(value)) throw new Error(`"${key}" moet de vorm #rrggbb hebben.`);
+	return value;
+}
+
+/* Wat voor objecten een laag tekent; undefined als dat (nog) niet bekend is. */
+function geometryKind(layer: GeoJsonLayer | MvtLayer): "point" | "line" | "polygon" | undefined {
+	if (layer instanceof GeoJsonLayer) return layer.geometryKind();
+	const type = String(layer.config.settings["geometryType"] ?? "");
+	if (type.endsWith("Point")) return "point";
+	if (type.endsWith("LineString")) return "line";
+	if (type.endsWith("Polygon")) return "polygon";
+	return undefined;
+}
+
+const setLayerStyle: UiTool<SetStyleArgs> = {
+	name: "set_layer_style",
+	description:
+		"Give ALL features of a layer the same colours (e.g. \"make the provinces yellow with a black outline\"). " +
+		"fill_color is the colour of polygons and points; stroke_color is the outline of polygons and points, " +
+		"and the colour of lines. Give at least one; what you leave out stays as it is. " +
+		"If the user wants colours that differ per feature or value, use color_layer_by_property instead.",
+	defaultApproval: "auto",
+	eligibleLayers: (layers) => layers.filter(({ layer }) => layer instanceof GeoJsonLayer || layer instanceof MvtLayer),
+	parameters: (layers) => ({
+		type: "object",
+		properties: {
+			layer_ref: layerRefProperty(layers),
+			fill_color: { type: "string", description: "Fill colour of polygons and points, as #rrggbb. Has no effect on lines." },
+			stroke_color: { type: "string", description: "Outline colour of polygons and points, and the colour of lines, as #rrggbb." }
+		},
+		required: ["layer_ref"]
+	}),
+	parse: (raw) => {
+		const obj = asObject(raw);
+		const fillColor = optionalColor(obj, "fill_color");
+		const strokeColor = optionalColor(obj, "stroke_color");
+		if (!fillColor && !strokeColor) throw new Error('Geef "fill_color", "stroke_color" of allebei.');
+		return { layerRef: requireString(obj, "layer_ref"), fillColor, strokeColor };
+	},
+	describe: (args) =>
+		`Geef de laag "${args.layerRef}" ` +
+		[args.fillColor && `vulling ${args.fillColor}`, args.strokeColor && `omlijning/lijn ${args.strokeColor}`]
+			.filter(Boolean)
+			.join(" en "),
+	execute: async (args, { map }) => {
+		const layer = findLayer(get(map.layers), args.layerRef);
+		if (!(layer instanceof GeoJsonLayer || layer instanceof MvtLayer)) {
+			throw new Error(`"${layer.title}" kan geen eigen kleuren krijgen (alleen GeoJSON- en MVT-lagen).`);
+		}
+		const kind = geometryKind(layer);
+		if (kind === "line" && !args.strokeColor) {
+			throw new Error(`"${layer.title}" is een lijnenlaag: lijnen hebben geen vulling, geef stroke_color.`);
+		}
+
+		const notes: string[] = [];
+		if (layer instanceof MvtLayer) {
+			/* Een punt heeft een eigen omlijning (pointStrokeColor); lijnen en vlakken strokeColor. */
+			const patch: Partial<LayerStyle> = {};
+			if (args.fillColor) patch.fillColor = args.fillColor;
+			if (args.strokeColor) {
+				if (kind === "point") patch.pointStrokeColor = args.strokeColor;
+				else patch.strokeColor = args.strokeColor;
+			}
+			/* Een kleuring op eigenschap vervangt de hoofdkleur; die zetten maakt er een eind aan. */
+			const replacesMainColor = kind === "line" ? Boolean(args.strokeColor) : Boolean(args.fillColor);
+			if (replacesMainColor) layer.dataDriven.set(undefined);
+			layer.setStyle(patch);   // bouwt de laag één keer opnieuw op
+		} else {
+			layer.setColors({ fillColor: args.fillColor, strokeColor: args.strokeColor });
+			if (kind === "point" && args.strokeColor) notes.push("punten in deze laag zijn pinnen en hebben geen omlijning");
+		}
+		if (kind === "line" && args.fillColor) notes.push("fill_color genegeerd: lijnen hebben geen vulling");
+
+		const parts = [
+			args.fillColor && kind !== "line" ? `vulling ${args.fillColor}` : "",
+			args.strokeColor ? `${kind === "line" ? "lijnkleur" : "omlijning"} ${args.strokeColor}` : ""
+		].filter(Boolean);
+		return `"${layer.title}" heeft nu ${parts.join(" en ")} voor alle objecten${notes.length ? ` (${notes.join("; ")})` : ""}.`;
+	}
+};
+
 /* Op `UiTool<unknown>` gezet aan de rand van de lijst: aanroepers gaan altijd eerst
    langs tool.parse, en dat maakt het argumenttype betrouwbaar. */
-export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, removeLayer] as unknown as UiTool<unknown>[];
+export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, setLayerStyle, removeLayer] as unknown as UiTool<unknown>[];
 
 export function getUiTool(name: string): UiTool<unknown> | undefined {
 	return UI_TOOLS.find((tool) => tool.name === name);
