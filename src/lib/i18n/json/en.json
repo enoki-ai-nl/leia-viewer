@@ -104,6 +104,10 @@
                     "pending": "Looking up the location…",
                     "done": "Location looked up"
                 },
+                "create_derived_layer": {
+                    "pending": "Creating the layer…",
+                    "done": "Layer created"
+                },
                 "wfs_load_to_table": {
                     "pending": "Loading WFS layer into a table…",
                     "done": "WFS layer loaded into a table"

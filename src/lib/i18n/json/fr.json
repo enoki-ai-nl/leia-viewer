@@ -104,6 +104,10 @@
                     "pending": "Recherche du lieu…",
                     "done": "Lieu trouvé"
                 },
+                "create_derived_layer": {
+                    "pending": "Création de la couche…",
+                    "done": "Couche créée"
+                },
                 "wfs_load_to_table": {
                     "pending": "Chargement de la couche WFS dans une table…",
                     "done": "Couche WFS chargée dans une table"

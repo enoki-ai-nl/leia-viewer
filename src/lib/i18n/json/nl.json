@@ -104,6 +104,10 @@
                     "pending": "Locatie opzoeken…",
                     "done": "Locatie opgezocht"
                 },
+                "create_derived_layer": {
+                    "pending": "Laag maken…",
+                    "done": "Laag gemaakt"
+                },
                 "wfs_load_to_table": {
                     "pending": "WFS-laag in een tabel laden…",
                     "done": "WFS-laag in een tabel geladen"

@@ -24,7 +24,7 @@ interface UiCall {
 const DECLINED = "The user declined this instruction.";
 
 /* Backend-tools die een dataset in de database zetten: daarna moet de lijst met AI-lagen hem tonen. */
-const DATASET_TOOLS = new Set(["wfs_load_to_table"]);
+const DATASET_TOOLS = new Set(["wfs_load_to_table", "create_derived_layer"]);
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
