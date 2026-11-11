@@ -7,10 +7,16 @@ import type { DataDrivenStyle } from "$lib/map-cesium/providers/mvt-style";
    Bewust een kopie van frontend/app/utils/styleUtils.ts: de twee frontends delen geen
    bestanden (ze draaien op aparte servers), dus houd de paletten gelijk met de hand. */
 
-/* Okabe-Ito plus enkele aanvullingen: ook te onderscheiden voor kleurenblinden. */
+/* Okabe-Ito plus enkele aanvullingen eerst (de eerste 12: ook te onderscheiden voor
+   kleurenblinden), dan 18 uit de contrastpaletten van Kelly en Trubetskoy, tot de 30
+   categorieën die de backend toestaat (MAX_CATEGORIES in services/tiles.py). Voorbij 12 is
+   niet elk paar veilig voor kleurenblinden. */
 const CATEGORICAL_PALETTE = [
 	"#0072b2", "#e69f00", "#009e73", "#cc79a7", "#d55e00", "#56b4e9",
-	"#f0e442", "#7f7f7f", "#8c564b", "#17becf", "#bcbd22", "#e377c2"
+	"#f0e442", "#7f7f7f", "#8c564b", "#17becf", "#bcbd22", "#e377c2",
+	"#be0032", "#875692", "#a1caf1", "#c2b280", "#f99379", "#604e97",
+	"#b3446c", "#8db600", "#654522", "#2b3d26", "#000075", "#aaffc3",
+	"#808000", "#ffd8b1", "#469990", "#dcbeff", "#800000", "#fabed4"
 ];
 
 /* Licht naar donker, zodat een hogere waarde als "meer" leest. */
