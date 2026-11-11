@@ -8,6 +8,7 @@
 
 	import type { Layer } from "$lib/map-core/layer";
 	import type { LayerLibrary } from "$lib/map-core/layer-library";
+	import { TestTool } from "carbon-icons-svelte";
 
 	export let library: LayerLibrary;
 	/* The layers on the map: every dataset is on it (hidden until switched on), with the full layer controls. */
@@ -24,7 +25,7 @@
 </script>
 
 <div class="chat-ai-layers">
-	<div class="bx--label gaia-label">{$_("tools.chat.gaiaLayers")}</div>
+	<div class="bx--label gaia-label" title={$_("tools.chat.gaiaLayersDescription")}>{$_("tools.chat.gaiaLayers")}</div>
 	<Accordion class="layer-group-accordion">
 		{#if group && $configs && $configs.length > 0}
 			{#each $configs as config (config.id)}
@@ -33,6 +34,8 @@
 					<LayerControl {layer} />
 				{/if}
 			{/each}
+		{:else}
+			<div class="bx--label no-layers-label">{$_("tools.chat.noLayers")}</div>
 		{/if}
 	</Accordion>
 </div>
@@ -41,5 +44,11 @@
 	.gaia-label {
 		margin-top: var(--cds-spacing-05);
 		padding: 0 var(--cds-spacing-05);
+		cursor: help;
+	}
+
+	.no-layers-label {
+		padding: 0 var(--cds-spacing-05);
+		font-style: italic;
 	}
 </style>
