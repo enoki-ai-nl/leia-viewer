@@ -97,10 +97,6 @@
                     "pending": "Datasets opvragen…",
                     "done": "Datasets opgevraagd"
                 },
-                "wfs_get_feature": {
-                    "pending": "Objecten ophalen bij WFS-dienst…",
-                    "done": "Objecten opgehaald bij WFS-dienst"
-                },
                 "wfs_load_to_table": {
                     "pending": "WFS-laag in een tabel laden…",
                     "done": "WFS-laag in een tabel geladen"

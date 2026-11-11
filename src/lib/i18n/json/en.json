@@ -97,10 +97,6 @@
                     "pending": "Listing datasets…",
                     "done": "Datasets listed"
                 },
-                "wfs_get_feature": {
-                    "pending": "Fetching features from WFS service…",
-                    "done": "Fetched features from WFS service"
-                },
                 "wfs_load_to_table": {
                     "pending": "Loading WFS layer into a table…",
                     "done": "WFS layer loaded into a table"
