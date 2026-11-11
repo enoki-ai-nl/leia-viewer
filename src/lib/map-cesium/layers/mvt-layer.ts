@@ -14,6 +14,16 @@ export interface MvtProperty {
 	kind: "number" | "text";
 }
 
+/* [west, zuid, oost, noord] als het een geldige extent in graden is, anders undefined. Een
+   extent in een ander stelsel (bijv. RD in meters) laat Cesium vastlopen bij het berekenen van
+   de camerapositie, en dan kan de laag niet eens worden toegevoegd. */
+function degreesExtent(value: unknown): [number, number, number, number] | undefined {
+	if (!Array.isArray(value) || value.length !== 4 || !value.every(Number.isFinite)) return undefined;
+	const [west, south, east, north] = value as number[];
+	const valid = -180 <= west && west <= east && east <= 180 && -90 <= south && south <= north && north <= 90;
+	return valid ? [west, south, east, north] : undefined;
+}
+
 /* Een laag met vector tiles (MVT) van een XYZ-tileservice. De laag leest zijn configuratie en
    regelt zichtbaarheid en camerapositie; het tekenen is aan MvtProviderCesium (providers/).
 
@@ -44,12 +54,13 @@ export class MvtLayer extends CesiumLayer<MvtProviderCesium> {
 		this.config.transparent = this.config.transparent ?? false;
 		const settings = this.config.settings;
 
-		const extent: number[] | undefined = settings["extent"];
+		const extent = degreesExtent(settings["extent"]);
+		if (settings["extent"] && !extent) {
+			console.warn(`Laag "${this.config.title}": extent ${JSON.stringify(settings["extent"])} is niet in graden; genegeerd.`);
+		}
 		if (extent) {
 			/* Zodat "vlieg naar" werkt, net als bij de laagbeheerder. */
-			const sphere = Cesium.BoundingSphere.fromRectangle3D(
-				Cesium.Rectangle.fromDegrees(...(extent as [number, number, number, number]))
-			);
+			const sphere = Cesium.BoundingSphere.fromRectangle3D(Cesium.Rectangle.fromDegrees(...extent));
 			this.map.options.use3DMode.subscribe((use3D) => {
 				this.config.cameraPosition = getCameraPositionFromBoundingSphere(sphere, use3D);
 			});
@@ -57,7 +68,7 @@ export class MvtLayer extends CesiumLayer<MvtProviderCesium> {
 
 		/* Zet de provider ook in de scene (zie addToMap). */
 		this.source = new MvtProviderCesium(settings["url"], {
-			extent: extent as [number, number, number, number] | undefined,
+			extent,
 			maxZoom: settings["maxZoom"],
 			clampToGround: !/polygon/i.test(settings["geometryType"] ?? ""),
 			color: settings["color"],

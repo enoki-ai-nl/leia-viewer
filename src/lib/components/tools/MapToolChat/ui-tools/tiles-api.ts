@@ -23,10 +23,6 @@ export interface TileInfo {
 	properties: (MvtProperty & { non_null: number })[];
 }
 
-export type ClassesResponse =
-	| { kind: "categorical"; values: { value: string; count: number }[] }
-	| { kind: "graduated"; breaks: number[]; min: number; max: number };
-
 export const authHeaders = ({ userKey }: ApiContext) => ({ Authorization: `Bearer ${userKey}` });
 
 async function getJson<T>(api: ApiContext, path: string): Promise<T> {
@@ -39,22 +35,5 @@ async function getJson<T>(api: ApiContext, path: string): Promise<T> {
 	return response.json() as Promise<T>;
 }
 
-/* Een nieuw toegangstoken voor de tiles van een dataset; goedkoop, anders dan fetchTileInfo. */
-export const fetchTileAccess = (api: ApiContext, datasetId: string) =>
-	getJson<{ tile_path: string; access_expires: number }>(api, `/datasets/${encodeURIComponent(datasetId)}/tile-access`);
-
 export const fetchTileInfo = (api: ApiContext, datasetId: string) =>
 	getJson<TileInfo>(api, `/datasets/${encodeURIComponent(datasetId)}/tileinfo`);
-
-/* Wat een stijl over de héle dataset moet weten: een tile bevat alleen wat in beeld is. */
-export function fetchClasses(
-	api: ApiContext,
-	datasetId: string,
-	property: string,
-	kind: "categorical" | "graduated",
-	classes?: number
-) {
-	const query = new URLSearchParams({ property, kind });
-	if (classes !== undefined) query.set("classes", String(classes));
-	return getJson<ClassesResponse>(api, `/datasets/${encodeURIComponent(datasetId)}/classes?${query}`);
-}

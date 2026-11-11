@@ -4,13 +4,11 @@ import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
 import { findLayer, isStylable, labelLayers, layerProperties, describeLegend, newId } from "./layers";
-import { categoricalFromValues, describeStyle, graduatedFromBreaks } from "./styles";
-import { fetchClasses, fetchTileInfo } from "./tiles-api";
-import { datasetLayerConfig } from "../GaiaLayers/gaia-layers";
+import { fetchTileInfo } from "./tiles-api";
+import { datasetGeoJsonConfig, GAIA_GROUP_ID } from "../GaiaLayers/gaia-layers";
 
 import type { Map } from "$lib/map-cesium/map";
-import type { GeoJsonLayer } from "$lib/map-cesium/layers/geojson-layer";
-import { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
+import { GeoJsonLayer } from "$lib/map-cesium/layers/geojson-layer";
 import type { LabelledLayer } from "./layers";
 import type { UiTool, UiToolContext } from "./types";
 
@@ -60,8 +58,6 @@ const layerRefParameters = (layers: LabelledLayer[]) => ({
 	properties: { layer_ref: layerRefProperty(layers) },
 	required: ["layer_ref"]
 });
-
-const ADDED_GROUP_ID = "assistantAdded";
 
 interface AddLayerArgs {
 	serviceType: "wfs" | "wms" | "dataset";
@@ -131,7 +127,7 @@ const addLayer: UiTool<AddLayerArgs> = {
 			id: newId(),
 			title: args.title ?? args.layerName,
 			type: args.serviceType,
-			groupId: ADDED_GROUP_ID,
+			groupId: GAIA_GROUP_ID,
 			defaultOn: true,
 			settings:
 				args.serviceType === "wfs"
@@ -152,36 +148,33 @@ const addLayer: UiTool<AddLayerArgs> = {
 /* Zet een laagconfig in de bibliotheek (in een eigen groep) en voegt hem aan de kaart toe. */
 function registerLayer(map: Map, config: LayerConfig): LayerConfig {
 	const library = map.layerLibrary;
-	if (!library.findGroup(ADDED_GROUP_ID)) {
-		library.addLayerConfigGroup(new LayerConfigGroup(ADDED_GROUP_ID, "Door de assistent toegevoegd"));
+	if (!library.findGroup(GAIA_GROUP_ID)) {
+		library.addLayerConfigGroup(new LayerConfigGroup(GAIA_GROUP_ID, "Door de assistent toegevoegd"));
 	}
 	library.addLayerConfig(config);
 	config.added.set(true);
 	return config;
 }
 
-/* Een dataset van de gebruiker als vector tiles in plaats van één GeoJSON-bestand, zodat ook
-   een grote dataset bij elk zoomniveau snel is en op eigenschap te kleuren. */
+/* Een dataset van de gebruiker als GeoJSON-laag (zie datasetGeoJsonConfig). */
 async function addDatasetLayer(args: AddLayerArgs, context: UiToolContext): Promise<string> {
 	const { map } = context;
 	const existing = get(map.layers).find((layer) => layer.config.settings?.datasetId === args.layerName);
 	if (existing) return `De dataset staat al op de kaart als "${existing.title}".`;
 
 	const info = await fetchTileInfo(context, args.layerName);
-	const config = registerLayer(map, datasetLayerConfig(context, info, {
-		id: newId(),
-		groupId: ADDED_GROUP_ID,
-		title: args.title,
-		defaultOn: true
-	}));
+	const config = registerLayer(
+		map,
+		datasetGeoJsonConfig(context, info, { id: newId(), groupId: GAIA_GROUP_ID, title: args.title, defaultOn: true })
+	);
 
 	const layer = map.getLayerById(config.id);
-	if (!(layer instanceof MvtLayer)) {
+	if (!(layer instanceof GeoJsonLayer)) {
 		map.layerLibrary.removeLayerConfig(config);
 		throw new Error(`Kon de dataset "${args.layerName}" niet als laag toevoegen.`);
 	}
 	try {
-		await layer.ready;
+		await layer.ensureLoaded();
 	} catch (error) {
 		map.layerLibrary.removeLayerConfig(config);
 		throw new Error(`Kon de dataset "${args.layerName}" niet laden: ${error instanceof Error ? error.message : error}`);
@@ -293,23 +286,8 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 				}.`
 			);
 		}
-		/* Een MVT-laag heeft de objecten niet in de browser (een tile bevat alleen wat in beeld
-		   is): de klassen komen van de API die de tiles levert, want die ziet de hele dataset. */
-		if (layer instanceof MvtLayer) {
-			const classes = await fetchClasses(
-				context,
-				layer.config.settings["datasetId"],
-				property.name,
-				property.kind === "number" ? "graduated" : "categorical"
-			);
-			const style = classes.kind === "categorical"
-				? categoricalFromValues(property.name, classes.values.map((v) => v.value))
-				: graduatedFromBreaks(property.name, classes.breaks);
-			layer.setDataDrivenStyle(style);
-			return `"${layer.title}" is gekleurd op "${property.name}". ${describeStyle(style)}.`;
-		}
-		(layer as GeoJsonLayer).style.set(property.name);
-		return `"${layer.title}" is gekleurd op "${property.name}". ${describeLegend(layer as GeoJsonLayer)}.`;
+		layer.style.set(property.name);
+		return `"${layer.title}" is gekleurd op "${property.name}". ${describeLegend(layer)}.`;
 	}
 };
 

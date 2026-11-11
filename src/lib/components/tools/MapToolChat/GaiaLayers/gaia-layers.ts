@@ -1,14 +1,13 @@
 import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
-import { fetchTileAccess, fetchTileInfo, authHeaders, type ApiContext, type TileInfo } from "../ui-tools/tiles-api";
+import { fetchTileInfo, authHeaders, type ApiContext, type TileInfo } from "../ui-tools/tiles-api";
 import { getUserKey } from "../user-key";
 
 import type { LayerLibrary } from "$lib/map-core/layer-library";
 
 /* De datasets van Gaia als lagen in de laagbibliotheek: een groep met één laag per dataset
-   van de ingelogde gebruiker, elk als vector tiles (MVT), zodat ook grote datasets snel zijn
-   en op eigenschap te kleuren. */
+   van de ingelogde gebruiker, elk als GeoJSON-laag. */
 
 export const GAIA_GROUP_ID = "gaia-datasets";
 export const GAIA_GROUP_TITLE = "AI lagen";
@@ -20,47 +19,11 @@ interface DatasetSummary {
 	z: number;
 }
 
-/* De laagconfiguratie voor een dataset. Cesium kan geen headers bij tile-verzoeken
-   meesturen: het toegangstoken zit in de URL. */
-export function datasetLayerConfig(
-	api: ApiContext,
-	info: TileInfo,
-	options: { id: string; groupId: string; title?: string; defaultOn?: boolean; description?: string }
-): LayerConfig {
-	return new LayerConfig({
-		id: options.id,
-		title: options.title ?? info.name ?? info.id,
-		description: options.description,
-		type: "mvt",
-		groupId: options.groupId,
-		defaultOn: options.defaultOn ?? false,
-		settings: {
-			url: api.apiUrl + info.tile_path,
-			accessExpires: info.access_expires,
-			accessIssuedAt: Math.floor(Date.now() / 1000),
-			/* Het token verloopt: de laag haalt zelf een nieuw (zie MvtLayer.renewIfNeeded). Een
-			   functie, zodat het sessietoken niet in de zichtbare laaginstellingen komt te staan. */
-			renewAccess: async () => {
-				const access = await fetchTileAccess(api, info.id);
-				return { url: api.apiUrl + access.tile_path, accessExpires: access.access_expires };
-			},
-			extent: info.extent ?? undefined,
-			datasetId: info.id,
-			geometryType: info.geometry_type,
-			properties: info.properties
-		}
-	});
-}
-
-/* Vlakken als GeoJSON in plaats van vector tiles: Cesium's MVTDataProvider (experimenteel in
-   1.146) legt ingewikkelde vlakken stuk op het terrein - slierten, gaten, en met meerdere
-   vlaklagen tegelijk een render-crash. GeoJsonLayer legt ze met GroundPrimitive en blijft
-   aanklikbaar en herkleurbaar. Nadeel: de hele laag komt in één keer; dat gebeurt pas als
-   de laag voor het eerst zichtbaar wordt (zie CesiumLayer.ensureLoaded). */
-export function isPolygonDataset(info: TileInfo): boolean {
-	return /polygon/i.test(info.geometry_type ?? "");
-}
-
+/* De laagconfiguratie voor een dataset: de hele dataset als GeoJSON (WGS84), geladen zodra de
+   laag voor het eerst zichtbaar wordt (zie CesiumLayer.ensureLoaded). Geen vector tiles: Cesium's
+   MVTDataProvider (experimenteel in 1.146) legt punten niet op het terrein en maakt van
+   ingewikkelde vlakken slierten en gaten. GeoJsonLayer legt alles met clampToGround op het
+   terrein en blijft aanklikbaar en herkleurbaar. Nadeel: de hele laag komt in één keer. */
 export function datasetGeoJsonConfig(
 	api: ApiContext,
 	info: TileInfo,
@@ -132,9 +95,7 @@ export async function addGaiaLayers(library: LayerLibrary, apiUrl: string): Prom
 		};
 		/* Allemaal verborgen op de kaart, zodat elke laag de volledige laagbediening heeft;
 		   de data komt pas als de gebruiker de laag aanzet. */
-		const config = isPolygonDataset(info)
-			? datasetGeoJsonConfig(api, info, options)
-			: datasetLayerConfig(api, info, options);
+		const config = datasetGeoJsonConfig(api, info, options);
 		library.addLayerConfig(config);
 		config.added.set(true);
 	}
