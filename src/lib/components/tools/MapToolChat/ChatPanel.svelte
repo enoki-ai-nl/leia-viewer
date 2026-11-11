@@ -72,7 +72,7 @@
 		{/if}
 	</div>
 
-	<ChatInput disabled={$busy} on:submit={(event) => session.ask(event.detail)} />
+	<ChatInput busy={$busy} on:submit={(event) => session.ask(event.detail)} on:stop={session.stop} />
 
 	{#if exportDialogOpen}
 		<ExportDialog on:confirm={exportConversation} on:cancel={() => (exportDialogOpen = false)} />

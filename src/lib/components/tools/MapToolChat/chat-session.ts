@@ -33,6 +33,8 @@ export interface ChatSession {
 	/* De sleutel van de ingelogde gebruiker; leeg tot de eerste vraag erom vraagt. */
 	userKey: Readable<string>;
 	ask(question: string): Promise<void>;
+	/* Stopt de lopende run; wat de agent al af had blijft staan. */
+	stop(): void;
 	applyUi(toolCallId: string): void;
 	dismissUi(toolCallId: string): void;
 	alwaysApplyUi(toolCallId: string, toolName: string): void;
@@ -58,6 +60,11 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 	/* Uitkomsten van instructies die de agent nog niet kent. Ze gaan mee vóór de
 	   volgende vraag: die volgorde verwacht de backend. */
 	let pendingResults: { toolCallId: string; content: string; error?: string }[] = [];
+
+	/* Breekt de lopende vraag af (zie stop); undefined als er geen loopt. */
+	let runAbort: AbortController | undefined;
+	/* Afbreken eindigt de run met een fout; die heeft de gebruiker zelf veroorzaakt. */
+	const stopped = () => runAbort?.signal.aborted ?? false;
 
 	/* Instructies lopen één voor één, in de volgorde van de agent. */
 	let execution: Promise<void> = Promise.resolve();
@@ -170,9 +177,12 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 			totalTokens.update((total) => total + tokens);
 		},
 
-		onRunErrorEvent: ({ event }) => push({ type: "error", error: event.message }),
+		onRunErrorEvent: ({ event }) => {
+			if (!stopped()) push({ type: "error", error: event.message });
+		},
 
 		onRunFailed: ({ error }) => {
+			if (stopped()) return;
 			console.error("Agent-run mislukt:", error);
 			push({ type: "error", error: get(_)("tools.chat.errors.noConnection") });
 		}
@@ -181,6 +191,8 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 	async function ask(question: string) {
 		if (get(busy)) return;
 		busy.set(true);
+		const abort = new AbortController();
+		runAbort = abort;
 
 		try {
 			const apiUrl = get(chatApiUrl);
@@ -188,6 +200,13 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 			if (!get(userKey)) userKey.set(await getUserKey(apiUrl));
 			const map = getMap();
 			const refs = await webserviceRefs(map);
+
+			/* Gestopt terwijl we nog inlogden of de lagen ophaalden: niets versturen. */
+			if (abort.signal.aborted) {
+				push({ type: "question", text: question });
+				push({ type: "stopped" });
+				return;
+			}
 
 			agent ??= new HttpAgent({ url: `${apiUrl}/agent/run`, threadId: conversationId });
 			agent.headers = authHeaders(get(userKey));
@@ -222,23 +241,30 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 			/* De backend raadt de taal niet zelf, maar volgt de interface ("nl-NL" -> "nl"). */
 			const language = get(locale)?.split("-")[0] ?? "en";
 			await agent
-				.runAgent({ tools: toAgUiTools(map), forwardedProps: { language } }, subscriber)
+				.runAgent({ tools: toAgUiTools(map), forwardedProps: { language }, abortController: abort }, subscriber)
 				.catch(() => {
 					/* al gemeld via onRunFailed */
 				});
 
 			/* Een aanroep zonder resultaat (de run brak af) blijft anders eeuwig "bezig". */
-			const noResult = get(_)("tools.chat.toolSteps.noResult");
+			const noResult = get(_)(abort.signal.aborted ? "tools.chat.toolSteps.stopped" : "tools.chat.toolSteps.noResult");
 			events.update((list) =>
 				list.map((e) => (e.type === "tool" && e.status === "pending" ? { ...e, status: "error", error: noResult } : e))
 			);
+			if (abort.signal.aborted) push({ type: "stopped" });
 		} catch (error) {
 			/* Inloggen of de lagen ophalen mislukte: dan is de vraag niet verstuurd. */
 			console.error("Vraag niet verstuurd:", error);
 			push({ type: "error", error: errorText(error) });
 		} finally {
+			runAbort = undefined;
 			busy.set(false);
 		}
+	}
+
+	/* De backend merkt de verbroken verbinding en stopt na de stap waar hij mee bezig is. */
+	function stop() {
+		runAbort?.abort();
 	}
 
 	async function exportCurrent(reason: string) {
@@ -253,6 +279,7 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 		totalTokens,
 		userKey,
 		ask,
+		stop,
 		applyUi,
 		dismissUi,
 		alwaysApplyUi,

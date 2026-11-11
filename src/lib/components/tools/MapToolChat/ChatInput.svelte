@@ -1,18 +1,20 @@
 <script lang="ts">
 	import SendAltFilled from "carbon-icons-svelte/lib/SendAltFilled.svelte";
+	import StopFilledAlt from "carbon-icons-svelte/lib/StopFilledAlt.svelte";
 	import { createEventDispatcher, tick } from "svelte";
 	import { _ } from "svelte-i18n";
 
-	/* Het invoerveld met verstuurknop. Meldt een vraag met `submit` en leegt zichzelf. */
-	export let disabled = false;
+	/* Het invoerveld met verstuurknop. Meldt een vraag met `submit` en leegt zichzelf.
+	   Zolang de agent bezig is (`busy`) wordt de verstuurknop een stopknop (`stop`). */
+	export let busy = false;
 
-	const dispatch = createEventDispatcher<{ submit: string }>();
+	const dispatch = createEventDispatcher<{ submit: string; stop: void }>();
 
 	let question = "";
 	let inputEl: HTMLTextAreaElement;
 
 	function submit() {
-		if (disabled) return;
+		if (busy) return;
 		dispatch("submit", question);
 		question = "";
 	}
@@ -59,13 +61,31 @@
 		bind:this={inputEl}
 		bind:value={question}
 		placeholder={$_("tools.chat.placeholder")}
-		{disabled}
+		disabled={busy}
 		rows="1"
 		on:keydown={handleKeydown}
 	></textarea>
-	<button class="chat-input__send" type="button" {disabled} aria-label={$_("tools.chat.send")} on:click={submit}>
-		<SendAltFilled size={20} />
-	</button>
+	{#if busy}
+		<button
+			class="chat-input__send"
+			type="button"
+			aria-label={$_("tools.chat.stop")}
+			title={$_("tools.chat.stop")}
+			on:click={() => dispatch("stop")}
+		>
+			<StopFilledAlt size={20} />
+		</button>
+	{:else}
+		<button
+			class="chat-input__send"
+			type="button"
+			aria-label={$_("tools.chat.send")}
+			title={$_("tools.chat.send")}
+			on:click={submit}
+		>
+			<SendAltFilled size={20} />
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -114,9 +134,8 @@
 		cursor: pointer;
 	}
 
-	/* Eén regel dekt beide: zolang de agent denkt staan veld en knop uit. */
-	.chat-input__field:disabled,
-	.chat-input__send:disabled {
+	/* Zolang de agent denkt staat het veld uit; de knop is dan de stopknop. */
+	.chat-input__field:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}

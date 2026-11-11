@@ -54,6 +54,8 @@
             "placeholder": "Posez une question",
             "send": "Envoyer la question",
             "thinking": "Réflexion en cours",
+            "stop": "Arrêter",
+            "stopped": "Arrêté.",
             "resize": "Redimensionner le chat",
             "gaiaLayers": "Couches IA",
             "results": "{count, plural, one {# résultat} other {# résultats}}",
@@ -106,7 +108,8 @@
                     "done": "Outil {tool} terminé"
                 },
                 "waiting": "En attente du résultat…",
-                "noResult": "Aucun résultat reçu."
+                "noResult": "Aucun résultat reçu.",
+                "stopped": "Arrêté avant la fin de cette étape."
             },
             "errors": {
                 "noConnection": "Pas de connexion avec l'assistant.",

@@ -54,6 +54,8 @@
             "placeholder": "Ask a question",
             "send": "Send question",
             "thinking": "Thinking",
+            "stop": "Stop",
+            "stopped": "Stopped.",
             "resize": "Resize the chat",
             "gaiaLayers": "AI layers",
             "results": "{count, plural, one {# result} other {# results}}",
@@ -106,7 +108,8 @@
                     "done": "Tool {tool} finished"
                 },
                 "waiting": "Waiting for result…",
-                "noResult": "No result received."
+                "noResult": "No result received.",
+                "stopped": "Stopped before this step finished."
             },
             "errors": {
                 "noConnection": "No connection to the assistant.",

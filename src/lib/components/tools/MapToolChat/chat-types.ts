@@ -32,4 +32,6 @@ export type ChatEvent =
 	| ToolEvent
 	| UiEvent
 	/* Een mislukte run, of een vraag die niet verstuurd kon worden. */
-	| { type: "error"; error: string };
+	| { type: "error"; error: string }
+	/* De gebruiker heeft de run gestopt. */
+	| { type: "stopped" };

@@ -54,6 +54,8 @@
             "placeholder": "Stel een vraag",
             "send": "Verstuur vraag",
             "thinking": "Bezig met nadenken",
+            "stop": "Stoppen",
+            "stopped": "Gestopt.",
             "resize": "Grootte van de chat aanpassen",
             "gaiaLayers": "AI lagen",
             "results": "{count, plural, one {# resultaat} other {# resultaten}}",
@@ -106,7 +108,8 @@
                     "done": "Tool {tool} afgerond"
                 },
                 "waiting": "Wachten op resultaat…",
-                "noResult": "Geen resultaat ontvangen."
+                "noResult": "Geen resultaat ontvangen.",
+                "stopped": "Gestopt voordat deze stap klaar was."
             },
             "errors": {
                 "noConnection": "Geen verbinding met de assistent.",

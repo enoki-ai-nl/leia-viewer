@@ -2,6 +2,7 @@
 	import ErrorFilled from "carbon-icons-svelte/lib/ErrorFilled.svelte";
 	import { marked } from "marked";
 	import DOMPurify from "dompurify";
+	import { _ } from "svelte-i18n";
 
 	import type { ChatEvent } from "./chat-types";
 	import type { ChatSession } from "./chat-session";
@@ -37,9 +38,17 @@
 		<span class="step__icon"><ErrorFilled size={16} /></span>
 		<span class="step__error">{event.error}</span>
 	</div>
+{:else if event.type === "stopped"}
+	<div class="stopped">{$_("tools.chat.stopped")}</div>
 {/if}
 
 <style>
+	.stopped {
+		font-size: 0.75rem;
+		font-style: italic;
+		color: var(--cds-text-02, #525252);
+	}
+
 	/* ---- Bubbels: de vraag en het antwoord ---- */
 
 	.bubble {
