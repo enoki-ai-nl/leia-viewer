@@ -71,10 +71,15 @@ export class MapOptions {
 		});
 		this.subscribe<number>(this.resolutionScale, (v) => {
 			this.map.viewer.resolutionScale = v;
+			this.applyMaximumScreenSpaceError();
 		});
-		this.subscribe<number>(this.maximumScreenSpaceError, (v) => {
-			this.map.viewer.scene.globe.maximumScreenSpaceError = v;
+		this.subscribe<number>(this.maximumScreenSpaceError, () => {
+			this.applyMaximumScreenSpaceError();
 		});
+		/* Naar een ander scherm slepen kan de pixelverhouding veranderen. */
+		if (typeof window !== "undefined") {
+			window.addEventListener("resize", () => this.applyMaximumScreenSpaceError());
+		}
 		this.subscribe<boolean>(this.groundAtmosphere, (v) => {
 			this.map.viewer.scene.globe.showGroundAtmosphere = v;
 		});
@@ -177,6 +182,21 @@ export class MapOptions {
 				setFunction(v);
 			});
 		});
+	}
+
+	/**
+	 * Zet de maximale schermfout van de globe. Cesium meet die in CSS-pixels: het deelt de fout
+	 * door de pixelverhouding van het canvas (QuadtreePrimitive.screenSpaceError). Op een scherm
+	 * met pixelverhouding 2 laat 1,2 dus 2,4 echte pixels fout toe, en worden terrein en alle
+	 * afbeeldingslagen (ook de achtergrondkaart) een niveau grover gekozen dan de instelling
+	 * doet vermoeden - en verder weg nog grover. De optie geldt daarom in echte pixels.
+	 */
+	public applyMaximumScreenSpaceError(viewer: Cesium.Viewer | undefined = this.map.viewer): void {
+		/* Tijdens het opstarten bestaat `map.viewer` nog niet; dan geeft de kaart de viewer zelf mee. */
+		if (!viewer) return;
+		const pixelRatio = Math.max((window.devicePixelRatio || 1) * viewer.resolutionScale, 1);
+		viewer.scene.globe.maximumScreenSpaceError = get(this.maximumScreenSpaceError) / pixelRatio;
+		if (this.map.viewer) this.map.refresh();
 	}
 
 	private change(setFunction: () => void) {

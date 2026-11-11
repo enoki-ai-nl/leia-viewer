@@ -3,6 +3,7 @@ import * as Cesium from "cesium";
 import { FeatureInfo } from "$lib/map-core/feature-info/feature-info";
 import { FeatureInfoRequestOptions } from "$lib/map-core/feature-info/feature-info-request-options";
 import { FeatureInfoRecord } from "$lib/map-core/feature-info/feature-info-record";
+import { MvtLayer } from "./layers/mvt-layer";
 import { get } from "svelte/store";
 
 
@@ -20,6 +21,7 @@ export class FeatureInfoHandler {
         this.map.featureInfo.results.subscribe(results => {
             if(!results || results.length === 0) {
                 this.resetSelected3DTileFeature();
+                this.clearMvtSelections();
             }
         })
     }
@@ -27,6 +29,7 @@ export class FeatureInfoHandler {
     public async queryFeatureInfo(options: FeatureInfoRequestOptions): Promise<FeatureInfo[]> {
         this.resetSelected3DTileFeature();
         this.resetSelectedEntity();
+        this.clearMvtSelections();
 
         const fiList = new Array<FeatureInfo>()
 
@@ -49,6 +52,14 @@ export class FeatureInfoHandler {
         }
 
         return fiList;
+    }
+
+    /* Een MVT-laag tekent zijn markering zelf (als aparte afbeeldingslaag): hier alleen wissen
+       en, na een klik, aanwijzen welk object het werd (zie imageryFeaturesToFeatureInfo). */
+    private clearMvtSelections(): void {
+        for (const layer of get(this.map.layers)) {
+            if (layer instanceof MvtLayer) layer.clearSelection();
+        }
     }
 
     private highlight3DTileFeature(feature: Cesium.Cesium3DTileFeature): void {   
@@ -96,13 +107,6 @@ export class FeatureInfoHandler {
                 return info;
             }
             return undefined;
-        }
-
-        // Vector tiles (MVT) geven in Cesium 1.146 een eigen featureklasse terug die
-        // niet van Cesium3DTileFeature erft en geen setProperty kent: dus geen
-        // markering, wel de eigenschappen.
-        if (picked instanceof Cesium.Cesium3DTileVectorFeature) {
-            return this.vectorTileFeatureToFeatureInfo(picked);
         }
 
         if (picked instanceof Cesium.Cesium3DTileFeature) {
@@ -169,19 +173,6 @@ export class FeatureInfoHandler {
         } else {
             return undefined;
         }
-    }
-
-    // `_layer` is de naam van de laag binnen de tile, geen eigenschap van het object.
-    // De titel komt van de kaartlaag die deze tileset tekent (zie MvtProviderCesium.tileset).
-    private vectorTileFeatureToFeatureInfo(feature: Cesium.Cesium3DTileVectorFeature): FeatureInfo | undefined {
-        const records = feature.getPropertyIds()
-            .filter((name) => name !== "_layer")
-            .map((name) => new FeatureInfoRecord(name, String(feature.getProperty(name) ?? "")));
-
-        const layer = get(this.map.layers).find((candidate: any) => candidate.source?.tileset === feature.tileset);
-        if (layer?.config.disablePopup) return undefined;
-
-        return new FeatureInfo(layer?.title ?? "-", records);
     }
 
     private cesium3dTileFeatureToFeatureInfo(feature: Cesium.Cesium3DTileFeature): FeatureInfo | undefined {
@@ -269,6 +260,7 @@ export class FeatureInfoHandler {
 
         const selectedLayer = this.map.getLayerById(configId);
         if (selectedLayer?.config.disablePopup) return undefined;
+        if (selectedLayer instanceof MvtLayer) selectedLayer.select(feature);
 
         return new FeatureInfo(title ? title : "-", records);
     }

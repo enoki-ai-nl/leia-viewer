@@ -1,13 +1,15 @@
 import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
-import { fetchTileInfo, authHeaders, type ApiContext, type TileInfo } from "../ui-tools/tiles-api";
+import { fetchClasses, fetchTileInfo, authHeaders, type ApiContext, type TileInfo } from "../ui-tools/tiles-api";
+import { categoricalFromValues, graduatedFromBreaks } from "../ui-tools/styles";
 import { getUserKey } from "../user-key";
 
 import type { LayerLibrary } from "$lib/map-core/layer-library";
 
 /* De datasets van Gaia als lagen in de laagbibliotheek: een groep met één laag per dataset
-   van de ingelogde gebruiker, elk als GeoJSON-laag. */
+   van de ingelogde gebruiker, elk als vector tiles (MVT), zodat ook grote datasets snel zijn,
+   op eigenschap te kleuren en aan te klikken. */
 
 export const GAIA_GROUP_ID = "gaia-datasets";
 export const GAIA_GROUP_TITLE = "AI lagen";
@@ -19,12 +21,12 @@ interface DatasetSummary {
 	z: number;
 }
 
-/* De laagconfiguratie voor een dataset: de hele dataset als GeoJSON (WGS84), geladen zodra de
-   laag voor het eerst zichtbaar wordt (zie CesiumLayer.ensureLoaded). Geen vector tiles: Cesium's
-   MVTDataProvider (experimenteel in 1.146) legt punten niet op het terrein en maakt van
-   ingewikkelde vlakken slierten en gaten. GeoJsonLayer legt alles met clampToGround op het
-   terrein en blijft aanklikbaar en herkleurbaar. Nadeel: de hele laag komt in één keer. */
-export function datasetGeoJsonConfig(
+/* De laagconfiguratie voor een dataset: vector tiles van de API, getekend door MvtLayer
+   (OpenLayers op een canvas, als afbeeldingslaag in Cesium). De sleutel van de gebruiker gaat
+   in de headers van elk tile-verzoek; `headers` is een functie, zodat hij niet in de zichtbare
+   laaginstellingen komt te staan. `classes` geeft de kleurklassen over de héle dataset: een tile
+   bevat alleen wat in beeld is. */
+export function datasetMvtConfig(
 	api: ApiContext,
 	info: TileInfo,
 	options: { id: string; groupId: string; title?: string; defaultOn?: boolean; description?: string }
@@ -33,12 +35,21 @@ export function datasetGeoJsonConfig(
 		id: options.id,
 		title: options.title ?? info.name ?? info.id,
 		description: options.description,
-		type: "geojson",
+		type: "mvt",
 		groupId: options.groupId,
 		defaultOn: options.defaultOn ?? false,
 		settings: {
-			url: `${api.apiUrl}/get/${encodeURIComponent(info.id)}`,
+			url: api.apiUrl + info.tile_path,
 			headers: () => authHeaders(api),
+			extent: info.extent ?? undefined,
+			geometryType: info.geometry_type,
+			properties: info.properties.map(({ name, kind }) => ({ name, kind })),
+			classes: async (property: string, kind: "number" | "text") => {
+				const classes = await fetchClasses(api, info.id, property, kind === "number" ? "graduated" : "categorical");
+				return classes.kind === "categorical"
+					? categoricalFromValues(property, classes.values.map((v) => v.value))
+					: graduatedFromBreaks(property, classes.breaks);
+			},
 			datasetId: info.id
 		}
 	});
@@ -95,7 +106,7 @@ export async function addGaiaLayers(library: LayerLibrary, apiUrl: string): Prom
 		};
 		/* Allemaal verborgen op de kaart, zodat elke laag de volledige laagbediening heeft;
 		   de data komt pas als de gebruiker de laag aanzet. */
-		const config = datasetGeoJsonConfig(api, info, options);
+		const config = datasetMvtConfig(api, info, options);
 		library.addLayerConfig(config);
 		config.added.set(true);
 	}

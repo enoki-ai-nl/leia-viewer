@@ -1,10 +1,28 @@
-/* Hoe een kleuring op eigenschap (de assistent kiest een eigenschap, de viewer kiest de
-   kleuren) wordt omgezet naar een Cesium3DTileStyle voor vector tiles.
+import { asArray } from "ol/color.js";
+import { Fill, Stroke, Style } from "ol/style.js";
+import CircleStyle from "ol/style/Circle.js";
 
-   Puur en zonder Cesium-import, zodat het los te testen is: de Cesium-expressietaal
-   is een eigen taal met eigen regels (namen met ':' kunnen niet als ${naam}, tekst
-   moet tussen aanhalingstekens), en een fout daarin ziet je pas als de kaart leeg blijft. */
+import type { FeatureLike } from "ol/Feature.js";
+import type { StyleFunction } from "ol/style/Style.js";
 
+/* Hoe een MVT-laag getekend wordt: dezelfde opties als de React-frontend met MapLibre
+   (frontend/app/types, LayerStyle), plus een kleuring op eigenschap die de kleur van de
+   geometrie overschrijft. Alles hier is puur OpenLayers-stijl: er komt geen Cesium bij kijken,
+   en de uitkomst is een StyleFunction die MvtImageryProvider op de tiles loslaat. */
+
+export interface LayerStyle {
+	fillColor: string;
+	fillOpacity: number;
+	strokeColor: string;
+	strokeWidth: number;
+	strokeOpacity: number;
+	pointRadius: number;
+	pointStrokeColor: string;
+	pointStrokeWidth: number;
+}
+
+/* Kleuring op een eigenschap. De assistent (of de gebruiker) kiest de eigenschap, de viewer
+   kiest de kleuren (zie MapToolChat/ui-tools/styles.ts). */
 export interface DataDrivenStyle {
 	property: string;
 	kind: "categorical" | "graduated";
@@ -14,92 +32,126 @@ export interface DataDrivenStyle {
 	fallbackColor: string; // voor objecten zonder (bruikbare) waarde
 }
 
-export type StyleConditions = [string, string][];
+/* Dezelfde vier vul-/lijnkleurparen als de React-app voor een nieuwe laag
+   (frontend/app/utils/layerUtils.ts, randomLayerStyle). */
+const FILL_COLORS = ["#ffbf00", "#e83f6f", "#2274a5", "#32936f"];
+const STROKE_COLORS = ["#735600", "#770e2c", "#0f354a", "#174333"];
 
-/* Cesium's expressietaal heeft geen betrouwbare escape voor aanhalingstekens: `\'` en
-   `\"` binnen een tekst geven een fout, `\\` komt niet overeen. Wat wél werkt is het
-   aanhalingsteken kiezen: dubbele als de tekst een ' bevat, enkele anders. Een tekst met
-   beide soorten kan dus niet, en een tekst die op een backslash eindigt ook niet (die
-   zou het sluitende teken ontsnappen). Dan weigeren we met een duidelijke melding in
-   plaats van een stijl te maken die stilletjes niets kleurt. */
-function literal(text: string, what: string): string {
-	if ((text.includes("'") && text.includes('"')) || text.endsWith("\\")) {
-		throw new Error(`${what} "${text}" kan niet in een Cesium-stijl worden gebruikt (aanhalingstekens of een backslash aan het eind).`);
-	}
-	const quote = text.includes("'") ? '"' : "'";
-	return quote + text + quote;
+/* De volgende stijl uit het palet voor een nieuwe laag, zodat lagen die kort na elkaar worden
+   toegevoegd een verschillende kleur krijgen. */
+let nextPair = 0;
+export function nextLayerStyle(): LayerStyle {
+	const i = nextPair++ % FILL_COLORS.length;
+	return {
+		fillColor: FILL_COLORS[i],
+		fillOpacity: 0.75,
+		strokeColor: STROKE_COLORS[i],
+		strokeWidth: 2,
+		strokeOpacity: 1,
+		pointRadius: 5,
+		pointStrokeColor: "#ffffff",
+		pointStrokeWidth: 2
+	};
 }
 
-/* ${feature['naam']} werkt voor elke eigenschapsnaam, ook die met dubbele punten of spaties.
-   Cesium zoekt het eind van ${ ... } met de eerste }, dus daarin kan geen } voorkomen. */
-function property(name: string): string {
-	if (name.includes("}")) {
-		throw new Error(`De eigenschap "${name}" kan niet in een Cesium-stijl worden gebruikt (bevat een }).`);
-	}
-	return "${feature[" + literal(name, "De eigenschap") + "]}";
-}
-
-function color(css: string): string {
-	return `color('${css}')`;
-}
-
-/* De voorwaarden voor Cesium3DTileStyle({ color: { conditions } }). De eerste die klopt wint. */
-export function styleConditions(style: DataDrivenStyle): StyleConditions {
-	const value = property(style.property);
-	const fallback: [string, string] = ["true", color(style.fallbackColor)];
+/* De kleur van een object bij een kleuring op eigenschap. Dezelfde regels als de MapLibre-
+   expressie in de frontend (colorExpression): waarden worden als tekst vergeleken, een object
+   zonder (bruikbare) waarde krijgt de terugvalkleur, en een klasse begint bij zijn ondergrens. */
+export function dataDrivenColor(style: DataDrivenStyle, properties: Record<string, unknown>): string {
+	const value = properties[style.property];
+	const blank = value === undefined || value === null || value === "";
 
 	if (style.kind === "categorical") {
-		/* String(...) vergelijkt als tekst, zoals de waarden worden opgegeven; een ontbrekende
-		   eigenschap wordt 'undefined' en valt daardoor op de terugvalkleur. */
-		return [
-			...(style.categories ?? []).map(
-				({ value: label, color: css }): [string, string] => [`String(${value}) === ${literal(label, "De waarde")}`, color(css)]
-			),
-			fallback
-		];
+		if (blank) return style.fallbackColor;
+		const text = String(value);
+		return style.categories?.find((category) => String(category.value) === text)?.color ?? style.fallbackColor;
 	}
 
-	const breaks = style.breaks ?? [];
+	if (blank) return style.fallbackColor;
 	const colors = style.colors ?? [];
-	return [
-		/* Geen (bruikbaar) getal: terugvalkleur. Number(undefined) is NaN, maar Number(null) is 0. */
-		[`${value} === undefined || ${value} === null || isNaN(Number(${value}))`, color(style.fallbackColor)],
-		/* Van hoog naar laag, zodat de eerste klasse die past de hoogste is. */
-		...breaks
-			.map((limit, i): [string, string] => [`Number(${value}) >= ${limit}`, color(colors[i + 1])])
-			.reverse(),
-		["true", color(colors[0])]
-	];
+	const number = Number(value);
+	const n = Number.isFinite(number) ? number : 0;
+	const breaks = style.breaks ?? [];
+	let index = 0;
+	while (index < breaks.length && n >= breaks[index]) index++;
+	return colors[index] ?? style.fallbackColor;
 }
 
-
-/* Wat Cesium zonder stijl tekent is nauwelijks te zien: elk punt is één pixel groot (vastgesteld
-   met een headless browser: 632 restaurants werden 27 pixels), en vlakken zijn wit. Elke laag
-   krijgt daarom altijd een basisstijl, ook zonder kleuring op eigenschap. */
-export const DEFAULT_POINT_SIZE = 9;
-export const DEFAULT_LINE_WIDTH = 2;
-
-/* Dezelfde vier kleuren als de React-app voor een nieuwe laag (frontend/app/utils/layerUtils.ts). */
-const LAYER_COLORS = ["#ffbf00", "#e83f6f", "#2274a5", "#32936f"];
-
-/* De volgende kleur uit het palet voor een nieuwe laag, zodat lagen die kort na elkaar worden
-   toegevoegd een verschillende kleur krijgen (een hash van een id gaf bij vier kleuren al snel
-   dezelfde kleur voor twee lagen). */
-let nextColor = 0;
-export function nextLayerColor(): string {
-	return LAYER_COLORS[nextColor++ % LAYER_COLORS.length];
+/* Een CSS-kleur met een doorzichtigheid erbij, als rgba(...). */
+function withOpacity(color: string, opacity: number): string {
+	const [r, g, b, a] = asArray(color);
+	return `rgba(${r}, ${g}, ${b}, ${a * opacity})`;
 }
 
-/* De definitie voor `new Cesium3DTileStyle(...)`: de kleuring op eigenschap als die er is,
-   anders één kleur; plus de grootte van punten en de breedte van lijnen, die Cesium anders op
-   1 laat staan. `color`, `pointSize` en `lineWidth` worden per soort object toegepast; de
-   andere negeert Cesium. */
-export function tileStyleDefinition(style: DataDrivenStyle | undefined, baseColor: string) {
-	return {
-		color: style ? { conditions: styleConditions(style) } : color(baseColor),
-		pointSize: String(DEFAULT_POINT_SIZE),
-		pointOutlineColor: "color('#ffffff')",
-		pointOutlineWidth: "1.5",
-		lineWidth: String(DEFAULT_LINE_WIDTH)
+type Kind = "point" | "line" | "polygon";
+
+function kindOf(feature: FeatureLike): Kind {
+	/* Bij een RenderFeature (zo komen tiles binnen) is de geometrie het object zelf. */
+	const type = feature.getGeometry()?.getType() ?? "Polygon";
+	if (type.endsWith("Point")) return "point";
+	if (type.endsWith("LineString")) return "line";
+	return "polygon";
+}
+
+/* De StyleFunction voor een laag: de basisstijl, met de kleur van de geometrie vervangen door
+   die van de kleuring op eigenschap als er een is. Een Style per soort object en kleur wordt
+   bewaard: een tile heeft er duizenden, de kleuren zijn er maar enkele. */
+export function createStyleFunction(style: LayerStyle, dataDriven?: DataDrivenStyle): StyleFunction {
+	const cache = new Map<string, Style>();
+	const make = (kind: Kind, color: string): Style => {
+		const stroke = new Stroke({ color: withOpacity(style.strokeColor, style.strokeOpacity), width: style.strokeWidth });
+		if (kind === "line") {
+			return new Style({ stroke: new Stroke({ color: withOpacity(color, style.strokeOpacity), width: style.strokeWidth }) });
+		}
+		const fill = new Fill({ color: withOpacity(color, style.fillOpacity) });
+		if (kind === "point") {
+			return new Style({
+				image: new CircleStyle({
+					radius: style.pointRadius,
+					fill,
+					stroke: new Stroke({ color: style.pointStrokeColor, width: style.pointStrokeWidth })
+				})
+			});
+		}
+		return new Style({ fill, stroke });
+	};
+
+	return (feature) => {
+		const kind = kindOf(feature);
+		const color = dataDriven
+			? dataDrivenColor(dataDriven, feature.getProperties())
+			: kind === "line"
+				? style.strokeColor
+				: style.fillColor;
+		const key = `${kind}|${color}`;
+		let result = cache.get(key);
+		if (!result) cache.set(key, (result = make(kind, color)));
+		return result;
+	};
+}
+
+/* De markering van het geselecteerde object: alleen dat object krijgt een stijl, de rest
+   `undefined` (niet getekend). `keyOf` bepaalt wat "hetzelfde object" is. */
+export function createHighlightStyleFunction(
+	keyOf: (feature: FeatureLike) => string,
+	selectedKey: string,
+	color: string
+): StyleFunction {
+	const point = new Style({
+		image: new CircleStyle({
+			radius: 9,
+			fill: new Fill({ color: withOpacity(color, 0.85) }),
+			stroke: new Stroke({ color: "#ffffff", width: 2 })
+		})
+	});
+	const line = new Style({ stroke: new Stroke({ color, width: 5 }) });
+	const polygon = new Style({
+		fill: new Fill({ color: withOpacity(color, 0.6) }),
+		stroke: new Stroke({ color, width: 4 })
+	});
+	return (feature) => {
+		if (keyOf(feature) !== selectedKey) return undefined;
+		const kind = kindOf(feature);
+		return kind === "point" ? point : kind === "line" ? line : polygon;
 	};
 }

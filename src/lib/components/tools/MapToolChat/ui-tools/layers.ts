@@ -1,6 +1,7 @@
 import { get } from "svelte/store";
 
 import { GeoJsonLayer } from "$lib/map-cesium/layers/geojson-layer";
+import { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
 
 import type { Layer } from "$lib/map-core/layer";
 
@@ -53,6 +54,7 @@ export function findLayer(layers: Layer[], label: string): Layer {
    want een tile bevat alleen wat in beeld is). Een WFS-laag bewaart ze wel per object,
    maar kent geen herkleuring. */
 export function layerProperties(layer: Layer, limit = 30): LayerProperty[] {
+	if (layer instanceof MvtLayer) return layer.properties.slice(0, limit).map(({ name, kind }) => ({ name, kind }));
 	if (!(layer instanceof GeoJsonLayer)) return [];
 	return layer.getPropertySummary().map((property) => ({
 		name: property.propertyName,
@@ -60,8 +62,8 @@ export function layerProperties(layer: Layer, limit = 30): LayerProperty[] {
 	}));
 }
 
-export function isStylable(layer: Layer): layer is GeoJsonLayer {
-	return layer instanceof GeoJsonLayer && layerProperties(layer).length > 0;
+export function isStylable(layer: Layer): layer is GeoJsonLayer | MvtLayer {
+	return (layer instanceof GeoJsonLayer || layer instanceof MvtLayer) && layerProperties(layer).length > 0;
 }
 
 export function describeLegend(layer: GeoJsonLayer, limit = 10): string {

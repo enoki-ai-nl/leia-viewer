@@ -4,15 +4,16 @@ import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
 import { findLayer, isStylable, labelLayers, layerProperties, describeLegend, newId } from "./layers";
+import { describeStyle } from "./styles";
 import { fetchTileInfo } from "./tiles-api";
-import { datasetGeoJsonConfig, GAIA_GROUP_ID } from "../GaiaLayers/gaia-layers";
+import { datasetMvtConfig, GAIA_GROUP_ID } from "../GaiaLayers/gaia-layers";
 
 import type { Map } from "$lib/map-cesium/map";
-import { GeoJsonLayer } from "$lib/map-cesium/layers/geojson-layer";
+import { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
 import type { LabelledLayer } from "./layers";
 import type { UiTool, UiToolContext } from "./types";
 
-/* De viewer kent een kleinere set dan de React-frontend: alleen GeoJSON-lagen kunnen
+/* De viewer kent een kleinere set dan de React-frontend: alleen GeoJSON- en MVT-lagen kunnen
    op eigenschap gekleurd worden, en er is geen `set_layer_color`. De WFS-laag geeft
    zijn objecten bij het laden een willekeurige kleur en heeft (nog) geen manier om ze
    achteraf te herkleuren. Omdat elke frontend zelf zijn tools aanmeldt, hoeft de
@@ -156,7 +157,7 @@ function registerLayer(map: Map, config: LayerConfig): LayerConfig {
 	return config;
 }
 
-/* Een dataset van de gebruiker als GeoJSON-laag (zie datasetGeoJsonConfig). */
+/* Een dataset van de gebruiker als vector tiles (zie datasetMvtConfig). */
 async function addDatasetLayer(args: AddLayerArgs, context: UiToolContext): Promise<string> {
 	const { map } = context;
 	const existing = get(map.layers).find((layer) => layer.config.settings?.datasetId === args.layerName);
@@ -165,19 +166,13 @@ async function addDatasetLayer(args: AddLayerArgs, context: UiToolContext): Prom
 	const info = await fetchTileInfo(context, args.layerName);
 	const config = registerLayer(
 		map,
-		datasetGeoJsonConfig(context, info, { id: newId(), groupId: GAIA_GROUP_ID, title: args.title, defaultOn: true })
+		datasetMvtConfig(context, info, { id: newId(), groupId: GAIA_GROUP_ID, title: args.title, defaultOn: true })
 	);
 
 	const layer = map.getLayerById(config.id);
-	if (!(layer instanceof GeoJsonLayer)) {
+	if (!(layer instanceof MvtLayer)) {
 		map.layerLibrary.removeLayerConfig(config);
 		throw new Error(`Kon de dataset "${args.layerName}" niet als laag toevoegen.`);
-	}
-	try {
-		await layer.ensureLoaded();
-	} catch (error) {
-		map.layerLibrary.removeLayerConfig(config);
-		throw new Error(`Kon de dataset "${args.layerName}" niet laden: ${error instanceof Error ? error.message : error}`);
 	}
 	if (config.cameraPosition) map.flyTo(config.cameraPosition);
 	return `Dataset "${layer.title}" is aan de kaart toegevoegd (${info.feature_count} objecten). Eigenschappen om op te kleuren: ${
@@ -275,7 +270,7 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 	execute: async (args, context) => {
 		const layer = findLayer(get(context.map.layers), args.layerRef);
 		if (!isStylable(layer)) {
-			throw new Error(`"${layer.title}" kan niet op eigenschap gekleurd worden (alleen GeoJSON-lagen).`);
+			throw new Error(`"${layer.title}" kan niet op eigenschap gekleurd worden (alleen GeoJSON- en MVT-lagen).`);
 		}
 		const available = layerProperties(layer);
 		const property = available.find((p) => p.name === args.property);
@@ -285,6 +280,12 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 					available.map((p) => `${p.name} (${p.kind})`).join(", ")
 				}.`
 			);
+		}
+		/* Een MVT-laag heeft de objecten niet in de browser (een tile bevat alleen wat in beeld
+		   is): de klassen komen van de API, want die ziet de hele dataset. */
+		if (layer instanceof MvtLayer) {
+			const style = await layer.colorBy(property.name);
+			return `"${layer.title}" is gekleurd op "${property.name}". ${style ? describeStyle(style) : ""}.`;
 		}
 		layer.style.set(property.name);
 		return `"${layer.title}" is gekleurd op "${property.name}". ${describeLegend(layer)}.`;

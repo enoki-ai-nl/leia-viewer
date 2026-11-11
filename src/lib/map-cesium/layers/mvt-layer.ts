@@ -1,11 +1,19 @@
 import { get, writable, type Writable } from "svelte/store";
 import * as Cesium from "cesium";
 
-import { CesiumLayer } from "./cesium-layer";
+import { CesiumImageryLayer } from "./imagery-layer";
 import { getCameraPositionFromBoundingSphere } from "../utils/layer-utils";
-import { MvtProviderCesium, type MvtAccess } from "../providers/mvt-provider";
+import { LruCache, MvtImageryProvider, featureKey, type FeatureCache } from "../providers/mvt-imagery-provider";
+import {
+	createHighlightStyleFunction,
+	createStyleFunction,
+	nextLayerStyle,
+	type DataDrivenStyle,
+	type LayerStyle
+} from "../providers/mvt-style";
+import { CustomLayerControl } from "$lib/map-core/custom-layer-control";
+import LayerControlMvt from "$lib/components/layer-controls/LayerControlMvt/LayerControlMvt.svelte";
 
-import type { DataDrivenStyle } from "../providers/mvt-style";
 import type { LayerConfig } from "$lib/map-core/layer-config";
 import type { Map } from "../map";
 
@@ -24,39 +32,51 @@ function degreesExtent(value: unknown): [number, number, number, number] | undef
 	return valid ? [west, south, east, north] : undefined;
 }
 
-/* Een laag met vector tiles (MVT) van een XYZ-tileservice. De laag leest zijn configuratie en
-   regelt zichtbaarheid en camerapositie; het tekenen is aan MvtProviderCesium (providers/).
+/* Een laag met vector tiles (MVT) van een XYZ-tileservice, getekend als afbeeldingslaag
+   (MvtImageryProvider). Stijl en selectie werken zoals in de frontend met MapLibre:
+
+   - stijl: `setStyle` (kleuren, lijndikte, puntgrootte) en `colorBy` / `setDataDrivenStyle`
+     (kleuren op eigenschap). Een tile ligt vast als hij getekend is, dus een andere stijl
+     betekent een nieuwe afbeeldingslaag op dezelfde plek in de stapel.
+   - selectie: een klik loopt via de feature-info van de viewer (Cesium roept de provider aan),
+     die `select` aanroept; `selected` is de sleutel van het geselecteerde object.
 
    settings:
-     url            URL-sjabloon met {z}, {x} en {y}. Een credential moet in de URL zitten:
-                    Cesium stuurt geen headers mee bij tile-verzoeken.
-     extent         [west, zuid, oost, noord] in graden
-     maxZoom        hoogste zoomniveau dat de service levert (standaard 14)
-     geometryType   type van de objecten (bijv. "MultiPolygon"); vlakken worden niet op het terrein gelegd
-     color          basiskleur (css) zonder kleuring op eigenschap
-     properties     [{ name, kind }] - eigenschappen waarop gekleurd kan worden
-     accessExpires  unix-tijd (s) waarop het token in de URL verloopt
-     accessIssuedAt unix-tijd (s) waarop het is uitgegeven
-     renewAccess    () => Promise<{ url, accessExpires }>: een nieuwe URL. De laag roept het zelf
-                    aan voordat het oude token verloopt. Een functie, zodat een sessietoken in
-                    de sluiting blijft en niet in de zichtbare instellingen staat.
-     swapTimeoutMs  hoe lang de oude tiles blijven staan terwijl de vernieuwde laag laadt
+     url          URL-sjabloon met {z}, {x} en {y}
+     headers      () => headers per tile-verzoek (bijv. de sleutel van de gebruiker); een functie,
+                  zodat die niet in de zichtbare instellingen staat
+     extent       [west, zuid, oost, noord] in graden
+     maxZoom      diepste niveau waarop tiles gevraagd worden (standaard 18)
+     detail       hoeveel niveaus fijner dan de globe (0-3, standaard 1); alleen deze laag,
+                  niet het terrein of 3D tiles (zie MvtImageryProvider)
+     geometryType type van de objecten (bijv. "MultiPolygon"), alleen ter informatie
+     properties   [{ name, kind }] - eigenschappen waarop gekleurd kan worden
+     classes      (property, kind) => Promise<DataDrivenStyle>: de kleurklassen over de héle
+                  dataset (een tile bevat alleen wat in beeld is); nodig voor `colorBy`
+     style        deel van een LayerStyle om de standaardstijl te overschrijven
      Andere sleutels laat de laag ongemoeid: ze zijn voor wie de laag heeft aangemaakt. */
-export class MvtLayer extends CesiumLayer<MvtProviderCesium> {
-	/* Wat de kleuring nu is, voor wie het wil tonen. */
-	public dataDriven: Writable<DataDrivenStyle | undefined> = writable(undefined);
+export class MvtLayer extends CesiumImageryLayer {
+	public style: Writable<LayerStyle>;
+	public dataDriven: Writable<DataDrivenStyle | undefined>;
+	/* De sleutel van het geselecteerde object, of undefined. */
+	public selected: Writable<string | undefined>;
 
-	/* Klaar als de tiles in de scene staan; weigert als dat niet lukt. */
-	public ready!: Promise<void>;
+	private featureCache: FeatureCache;
+	private highlight: Cesium.ImageryLayer | undefined;
+	/* Waar de nieuwe afbeeldingslaag in de stapel komt als de oude is vervangen. */
+	private insertAt: number | undefined;
+	private reportedError = false;
 
 	constructor(map: Map, config: LayerConfig) {
 		super(map, config);
-		this.config.transparent = this.config.transparent ?? false;
-		const settings = this.config.settings;
+		this.style = writable({ ...nextLayerStyle(), ...config.settings["style"] });
+		this.dataDriven = writable(undefined);
+		this.selected = writable(undefined);
+		this.featureCache = new LruCache(300);
 
-		const extent = degreesExtent(settings["extent"]);
-		if (settings["extent"] && !extent) {
-			console.warn(`Laag "${this.config.title}": extent ${JSON.stringify(settings["extent"])} is niet in graden; genegeerd.`);
+		const extent = degreesExtent(config.settings["extent"]);
+		if (config.settings["extent"] && !extent) {
+			console.warn(`Laag "${config.title}": extent ${JSON.stringify(config.settings["extent"])} is niet in graden; genegeerd.`);
 		}
 		if (extent) {
 			/* Zodat "vlieg naar" werkt, net als bij de laagbeheerder. */
@@ -66,63 +86,143 @@ export class MvtLayer extends CesiumLayer<MvtProviderCesium> {
 			});
 		}
 
-		/* Zet de provider ook in de scene (zie addToMap). */
-		this.source = new MvtProviderCesium(settings["url"], {
-			extent,
-			maxZoom: settings["maxZoom"],
-			clampToGround: !/polygon/i.test(settings["geometryType"] ?? ""),
-			color: settings["color"],
-			accessExpires: settings["accessExpires"],
-			accessIssuedAt: settings["accessIssuedAt"],
-			renewAccess: settings["renewAccess"] as (() => Promise<MvtAccess>) | undefined,
-			swapTimeoutMs: settings["swapTimeoutMs"],
-			/* De instellingen van de laag blijven kloppen met wat er nu gebruikt wordt. */
-			onRenewed: ({ url, accessExpires, accessIssuedAt }) => {
-				settings["url"] = url;
-				settings["accessExpires"] = accessExpires;
-				settings["accessIssuedAt"] = accessIssuedAt;
-			}
-		});
+		const control = new CustomLayerControl();
+		control.component = LayerControlMvt;
+		control.props = { layer: this };
+		this.addCustomControl(control);
+
+		/* Niet pas bij `startLoading`: dat wordt al in de constructor van de basisklasse
+		   aangeroepen, voordat de velden hierboven bestaan. Een afbeeldingslaag vraagt toch
+		   niets op zolang hij verborgen is. */
+		this.createLayer();
 	}
+
+	public createLayer(): void {
+		this.source = this.buildLayer();
+	}
+
+	/* Zie createLayer: dat gebeurt al in de constructor. */
+	protected startLoading(): void {}
 
 	public get properties(): MvtProperty[] {
 		return this.config.settings["properties"] ?? [];
 	}
 
-	/* Kleur de objecten op een eigenschap; `undefined` zet de basiskleur terug. De klassen
-	   (waarden of grenzen) bepaalt wie dit aanroept: een tile bevat alleen wat in beeld is. */
+	/* --- Stijl ------------------------------------------------------------------------ */
+
+	public setStyle(patch: Partial<LayerStyle>): void {
+		this.style.update((style) => ({ ...style, ...patch }));
+		this.rebuild();
+	}
+
+	/* Kleur de objecten op een eigenschap; `undefined` zet de basiskleur terug. */
 	public setDataDrivenStyle(style: DataDrivenStyle | undefined): void {
-		this.source.setStyle(style);
 		this.dataDriven.set(style);
+		this.rebuild();
 	}
 
-	/* Vernieuwt de tile-URL als het token oud wordt; zie MvtProviderCesium.renewIfNeeded. */
-	public renewIfNeeded(now?: number): Promise<boolean> {
-		return this.source.renewIfNeeded(now);
+	/* Kleur op een eigenschap, met klassen over de héle dataset (`settings.classes`). */
+	public async colorBy(property: string | undefined): Promise<DataDrivenStyle | undefined> {
+		if (!property) {
+			this.setDataDrivenStyle(undefined);
+			return undefined;
+		}
+		const kind = this.properties.find((candidate) => candidate.name === property)?.kind;
+		if (!kind) throw new Error(`"${this.title}" heeft geen eigenschap "${property}".`);
+		const classes = this.config.settings["classes"] as ((property: string, kind: string) => Promise<DataDrivenStyle>) | undefined;
+		if (!classes) throw new Error(`"${this.title}" kan niet op eigenschap gekleurd worden: er is geen klassenindeling.`);
+		const style = await classes(property, kind);
+		this.setDataDrivenStyle(style);
+		return style;
 	}
 
-	public addToMap(): void {
-		this.ready = this.source.addToMap(this.map, get(this.visible));
-		/* Wie niet op `ready` wacht (de kaart zelf), hoeft geen onbehandelde fout te krijgen. */
-		this.ready.catch((error) => {
-			console.error(`Kon de MVT-laag "${this.config.title}" niet laden:`, error);
-			this.config.added.set(false);
+	/* --- Selectie --------------------------------------------------------------------- */
+
+	/* Markeer het object dat Cesium bij een klik vond (zie MvtImageryProvider.pickFeatures). */
+	public select(feature: Cesium.ImageryLayerFeatureInfo): void {
+		const key = feature.data?.key;
+		if (key === undefined) return;
+		this.clearSelection();
+
+		const color = get(this.map.featureInfo.selectedFeatureColor);
+		const layers = this.map.viewer.imageryLayers;
+		/* Een eigen provider, want de stijl ligt vast in wat hij tekent; de gedecodeerde tiles
+		   zijn gedeeld, dus dit haalt niets opnieuw op. Geen config_id: dit is niet de laag zelf. */
+		const provider = this.createProvider(createHighlightStyleFunction(featureKey, key, color), false);
+		this.highlight = new Cesium.ImageryLayer(provider as unknown as Cesium.ImageryProvider);
+		layers.add(this.highlight);
+		layers.raiseToTop(this.highlight);
+		this.selected.set(key);
+		this.map.refresh();
+	}
+
+	public clearSelection(): void {
+		if (!this.highlight) return;
+		this.map.viewer.imageryLayers.remove(this.highlight, true);
+		this.highlight = undefined;
+		this.selected.set(undefined);
+		this.map.refresh();
+	}
+
+	/* --- Laag in de kaart ------------------------------------------------------------- */
+
+	private createProvider(style: ReturnType<typeof createStyleFunction>, pickable: boolean): MvtImageryProvider {
+		const settings = this.config.settings;
+		return new MvtImageryProvider({
+			url: settings["url"],
+			headers: settings["headers"],
+			style,
+			featureCache: this.featureCache,
+			extent: degreesExtent(settings["extent"]),
+			maximumLevel: settings["maxZoom"],
+			detail: settings["detail"],
+			pickable,
+			onError: (error) => {
+				/* Eén melding per laag: bij een kapotte server faalt anders elke tile. */
+				if (this.reportedError) return;
+				this.reportedError = true;
+				console.error(`MVT-laag "${this.title}":`, error);
+			}
 		});
 	}
 
+	private buildLayer(): Cesium.ImageryLayer {
+		const provider = this.createProvider(createStyleFunction(get(this.style), get(this.dataDriven)), true);
+		return new Cesium.ImageryLayer(provider as unknown as Cesium.ImageryProvider, {
+			alpha: this.getOpacity(get(this.opacity)),
+			show: get(this.visible)
+		});
+	}
+
+	/* Een andere stijl: een nieuwe afbeeldingslaag op de plek van de oude. */
+	private rebuild(): void {
+		const layers = this.map.viewer.imageryLayers;
+		const index = layers.indexOf(this.source);
+		if (index >= 0) {
+			layers.remove(this.source, true);
+			this.insertAt = index;
+		}
+		this.source = this.buildLayer();
+	}
+
+	/* Anders dan de basisklasse op de plek van een vervangen laag, niet bovenaan. */
+	public addToMap(): void {
+		const layers = this.map.viewer.imageryLayers;
+		const index = this.insertAt ?? (this.config.isBackground ? 0 : undefined);
+		this.insertAt = undefined;
+		if (index === undefined) layers.add(this.source);
+		else layers.add(this.source, index);
+		get(this.visible) ? this.show() : this.hide();
+	}
+
 	public removeFromMap(): void {
-		this.source.removeFromMap();
+		this.clearSelection();
+		super.removeFromMap();
 	}
 
-	public show(): void {
-		this.source?.show();
-	}
-
+	/* Wat verborgen is kan niet geselecteerd zijn. */
 	public hide(): void {
-		this.source?.hide();
-	}
-
-	public opacityChanged(_opacity: number): void {
-		/* MVTDataProvider kent (nog) geen doorzichtigheid; de kleur komt uit de stijl. */
+		super.hide();
+		if (this.source) this.clearSelection();
 	}
 }

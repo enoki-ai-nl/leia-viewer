@@ -1,7 +1,7 @@
 import type { MvtProperty } from "$lib/map-cesium/layers/mvt-layer";
 
 /* De tile-endpoints van de API waar de assistent mee praat (zie ApiContext). De tiles zelf
-   haalt Cesium op; hier staat al het andere. */
+   haalt MvtImageryProvider op, met de sleutel in de headers; hier staat al het andere. */
 
 export interface ApiContext {
 	apiUrl: string;
@@ -11,11 +11,8 @@ export interface ApiContext {
 export interface TileInfo {
 	id: string;
 	name: string;
-	/* URL-sjabloon (met {z}/{x}/{y}) mét een eigen toegangstoken. Cesium bouwt elk tile-adres
-	   alleen uit het sjabloon en kan geen headers meesturen, dus het token zit in de URL: een
-	   ondertekend, alleen-lezen token voor déze dataset dat verloopt - nooit de sleutel van de gebruiker. */
+	/* URL-sjabloon met {z}/{x}/{y}, relatief aan de API, zonder sleutel: die gaat in de headers. */
 	tile_path: string;
-	access_expires: number; /* unix-tijd waarop het token verloopt */
 	source_layer: string;
 	geometry_type: string | null;
 	extent: [number, number, number, number] | null;
@@ -37,3 +34,20 @@ async function getJson<T>(api: ApiContext, path: string): Promise<T> {
 
 export const fetchTileInfo = (api: ApiContext, datasetId: string) =>
 	getJson<TileInfo>(api, `/datasets/${encodeURIComponent(datasetId)}/tileinfo`);
+
+/* Wat een stijl over de héle dataset moet weten: een tile bevat alleen wat in beeld is. */
+export type ClassesResponse =
+	| { kind: "categorical"; values: { value: string; count: number }[] }
+	| { kind: "graduated"; breaks: number[]; min: number; max: number };
+
+export function fetchClasses(
+	api: ApiContext,
+	datasetId: string,
+	property: string,
+	kind: "categorical" | "graduated",
+	classes?: number
+) {
+	const query = new URLSearchParams({ property, kind });
+	if (classes !== undefined) query.set("classes", String(classes));
+	return getJson<ClassesResponse>(api, `/datasets/${encodeURIComponent(datasetId)}/classes?${query}`);
+}

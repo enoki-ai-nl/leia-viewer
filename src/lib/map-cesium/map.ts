@@ -322,7 +322,7 @@ export class Map extends MapCore {
 		date.setUTCHours(13, 0, 0, 0);
 		viewer.clock.currentTime = Cesium.JulianDate.fromDate(date);
 
-		viewer.scene.globe.maximumScreenSpaceError = get(this.options.maximumScreenSpaceError);
+		this.options.applyMaximumScreenSpaceError(viewer);
 		viewer.scene.globe.enableLighting = get(this.options.lighting);
 		viewer.scene.globe.showGroundAtmosphere = get(this.options.groundAtmosphere);
 		viewer.scene.globe.depthTestAgainstTerrain = true;

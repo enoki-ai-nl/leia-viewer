@@ -1,0 +1,171 @@
+<script lang="ts">
+	import { _ } from "svelte-i18n";
+	import { Dropdown, Slider } from "carbon-components-svelte";
+
+	import type { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
+	import type { DataDrivenStyle } from "$lib/map-cesium/providers/mvt-style";
+
+	/* De puntgrootte stopt bij 15: een tile reikt maar zo ver buiten zijn rand (TILE_BUFFER in
+	   backend/app/src/services/tiles.py), en een groter punt zou aan de tilerand worden afgekapt.
+
+	   Stijl van een MVT-laag, zoals in de frontend: kleuren, lijndikte, puntgrootte, en kleuren
+	   op eigenschap. Elke wijziging bouwt de afbeeldingslaag opnieuw op (de tiles liggen vast
+	   als ze getekend zijn), dus de schuiven wachten even tot je stopt met slepen. */
+	export let layer: MvtLayer;
+
+	const { style, dataDriven } = layer;
+
+	const NONE = "";
+	$: items = [
+		{ id: NONE, text: $_("tools.layerManager.styleDefault") },
+		...layer.properties.map(({ name }) => ({ id: name, text: name }))
+	];
+	$: active = $dataDriven?.property ?? NONE;
+
+	let error = "";
+	async function colorBy(property: string) {
+		error = "";
+		try {
+			await layer.colorBy(property || undefined);
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	function later(patch: Parameters<MvtLayer["setStyle"]>[0]) {
+		clearTimeout(timer);
+		timer = setTimeout(() => layer.setStyle(patch), 250);
+	}
+
+	const round = (n: number) => Number(n.toPrecision(4));
+
+	/* De klassen en hun kleuren, voor de legenda. */
+	function legend(style: DataDrivenStyle | undefined): { label: string; color: string }[] {
+		if (!style) return [];
+		if (style.kind === "categorical") {
+			return (style.categories ?? []).map(({ value, color }) => ({ label: value, color }));
+		}
+		const breaks = style.breaks ?? [];
+		return (style.colors ?? []).map((color, i) => ({
+			color,
+			label:
+				i === 0
+					? `< ${round(breaks[0])}`
+					: i < breaks.length
+						? `${round(breaks[i - 1])} – ${round(breaks[i])}`
+						: `≥ ${round(breaks[i - 1])}`
+		}));
+	}
+	$: classes = legend($dataDriven);
+</script>
+
+<div class="mvt-styling">
+	{#if layer.properties.length > 0}
+		<div class="control-section">
+			<Dropdown
+				titleText={$_("tools.layerManager.styling")}
+				selectedId={active}
+				{items}
+				size="sm"
+				on:select={(e) => colorBy(e.detail.selectedId)}
+			/>
+			{#if error}<div class="error">{error}</div>{/if}
+		</div>
+	{/if}
+
+	{#if classes.length > 0}
+		<div class="control-section">
+			<div class="control-header">{$_("tools.layerManager.legend")}</div>
+			{#each classes as item}
+				<div class="legend-item">
+					<div class="legend-color" style="background-color: {item.color}"></div>
+					<div class="legend-text">{item.label}</div>
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<div class="control-section colors">
+			<label>
+				{$_("tools.layerManager.fillColor")}
+				<input type="color" value={$style.fillColor} on:change={(e) => layer.setStyle({ fillColor: e.currentTarget.value })} />
+			</label>
+			<label>
+				{$_("tools.layerManager.strokeColor")}
+				<input type="color" value={$style.strokeColor} on:change={(e) => layer.setStyle({ strokeColor: e.currentTarget.value })} />
+			</label>
+		</div>
+	{/if}
+
+	<div class="control-section">
+		<Slider
+			value={$style.strokeWidth}
+			labelText={$_("tools.layerManager.strokeWidth")}
+			fullWidth={true}
+			hideTextInput={true}
+			min={0}
+			max={10}
+			step={0.5}
+			minLabel="0"
+			maxLabel="10"
+			on:change={(e) => later({ strokeWidth: e.detail })}
+		/>
+	</div>
+	<div class="control-section">
+		<Slider
+			value={$style.pointRadius}
+			labelText={$_("tools.layerManager.pointRadius")}
+			fullWidth={true}
+			hideTextInput={true}
+			min={1}
+			max={15}
+			step={1}
+			minLabel="1"
+			maxLabel="15"
+			on:change={(e) => later({ pointRadius: e.detail })}
+		/>
+	</div>
+</div>
+
+<style>
+	.mvt-styling {
+		margin: 15px 0;
+	}
+	.control-header {
+		margin-bottom: 8px;
+	}
+	.control-section {
+		margin: 15px 0;
+	}
+	.colors {
+		display: flex;
+		gap: 20px;
+	}
+	.colors label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.colors input {
+		width: 32px;
+		height: 24px;
+		padding: 0;
+	}
+	.legend-item {
+		display: grid;
+		grid-template-columns: 20px 1fr;
+		grid-gap: 10px;
+		margin-top: 6px;
+	}
+	.legend-color {
+		height: 100%;
+		width: 100%;
+		border: 1px solid #000;
+		border-radius: 4px;
+	}
+	.error {
+		margin-top: 6px;
+		color: var(--cds-support-01, #da1e28);
+		font-size: 0.75rem;
+	}
+</style>
