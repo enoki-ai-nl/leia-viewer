@@ -3,22 +3,20 @@ import { get } from "svelte/store";
 import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
-import { findLayer, isStylable, labelLayers, layerProperties, describeLegend, newId } from "./layers";
+import { findLayer, isStylable, labelLayers, layerProperties, newId } from "./layers";
 import { describeStyle } from "./styles";
 import { fetchTileInfo } from "./tiles-api";
 import { datasetMvtConfig, GAIA_GROUP_ID } from "../GaiaLayers/gaia-layers";
 
 import type { Map } from "$lib/map-cesium/map";
-import { GeoJsonLayer } from "$lib/map-cesium/layers/geojson-layer";
 import { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
 import type { LayerStyle } from "$lib/map-cesium/providers/mvt-style";
 import type { LabelledLayer } from "./layers";
 import type { UiTool, UiToolContext } from "./types";
 
-/* De viewer kent een kleinere set dan de React-frontend: alleen GeoJSON- en MVT-lagen kunnen
-   op eigenschap gekleurd worden of eigen kleuren krijgen (`set_layer_style`). De WFS-laag geeft
-   zijn objecten bij het laden een willekeurige kleur en heeft (nog) geen manier om ze
-   achteraf te herkleuren. Omdat elke frontend zelf zijn tools aanmeldt, hoeft de
+/* De assistent stijlt alleen MVT-lagen (de datasets van de gebruiker): op eigenschap kleuren
+   (`color_layer_by_property`) en eigen kleuren (`set_layer_style`). GeoJSON-, WFS- en andere
+   lagen laat hij zoals ze zijn. Omdat elke frontend zelf zijn tools aanmeldt, hoeft de
    backend daar niets van te weten. */
 
 function asObject(raw: unknown): Record<string, unknown> {
@@ -272,7 +270,7 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 	execute: async (args, context) => {
 		const layer = findLayer(get(context.map.layers), args.layerRef);
 		if (!isStylable(layer)) {
-			throw new Error(`"${layer.title}" kan niet op eigenschap gekleurd worden (alleen GeoJSON- en MVT-lagen).`);
+			throw new Error(`"${layer.title}" kan niet op eigenschap gekleurd worden (alleen MVT-lagen).`);
 		}
 		const available = layerProperties(layer);
 		const property = available.find((p) => p.name === args.property);
@@ -285,12 +283,8 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 		}
 		/* Een MVT-laag heeft de objecten niet in de browser (een tile bevat alleen wat in beeld
 		   is): de klassen komen van de API, want die ziet de hele dataset. */
-		if (layer instanceof MvtLayer) {
-			const style = await layer.colorBy(property.name);
-			return `"${layer.title}" is gekleurd op "${property.name}". ${style ? describeStyle(style) : ""}.`;
-		}
-		layer.style.set(property.name);
-		return `"${layer.title}" is gekleurd op "${property.name}". ${describeLegend(layer)}.`;
+		const style = await layer.colorBy(property.name);
+		return `"${layer.title}" is gekleurd op "${property.name}". ${style ? describeStyle(style) : ""}.`;
 	}
 };
 
@@ -305,9 +299,8 @@ function optionalColor(obj: Record<string, unknown>, key: string): string | unde
 	return value;
 }
 
-/* Wat voor objecten een laag tekent; undefined als dat (nog) niet bekend is. */
-function geometryKind(layer: GeoJsonLayer | MvtLayer): "point" | "line" | "polygon" | undefined {
-	if (layer instanceof GeoJsonLayer) return layer.geometryKind();
+/* Wat voor objecten een MVT-laag tekent; undefined als dat niet bekend is. */
+function geometryKind(layer: MvtLayer): "point" | "line" | "polygon" | undefined {
 	const type = String(layer.config.settings["geometryType"] ?? "");
 	if (type.endsWith("Point")) return "point";
 	if (type.endsWith("LineString")) return "line";
@@ -323,7 +316,8 @@ const setLayerStyle: UiTool<SetStyleArgs> = {
 		"and the colour of lines. Give at least one; what you leave out stays as it is. " +
 		"If the user wants colours that differ per feature or value, use color_layer_by_property instead.",
 	defaultApproval: "auto",
-	eligibleLayers: (layers) => layers.filter(({ layer }) => layer instanceof GeoJsonLayer || layer instanceof MvtLayer),
+	/* Alleen MVT-lagen: dat zijn de datasets van de gebruiker, en alleen die kleurt de assistent. */
+	eligibleLayers: (layers) => layers.filter(({ layer }) => layer instanceof MvtLayer),
 	parameters: (layers) => ({
 		type: "object",
 		properties: {
@@ -347,31 +341,27 @@ const setLayerStyle: UiTool<SetStyleArgs> = {
 			.join(" en "),
 	execute: async (args, { map }) => {
 		const layer = findLayer(get(map.layers), args.layerRef);
-		if (!(layer instanceof GeoJsonLayer || layer instanceof MvtLayer)) {
-			throw new Error(`"${layer.title}" kan geen eigen kleuren krijgen (alleen GeoJSON- en MVT-lagen).`);
+		if (!(layer instanceof MvtLayer)) {
+			throw new Error(`"${layer.title}" kan geen eigen kleuren krijgen (alleen MVT-lagen).`);
 		}
 		const kind = geometryKind(layer);
 		if (kind === "line" && !args.strokeColor) {
 			throw new Error(`"${layer.title}" is een lijnenlaag: lijnen hebben geen vulling, geef stroke_color.`);
 		}
 
-		const notes: string[] = [];
-		if (layer instanceof MvtLayer) {
-			/* Een punt heeft een eigen omlijning (pointStrokeColor); lijnen en vlakken strokeColor. */
-			const patch: Partial<LayerStyle> = {};
-			if (args.fillColor) patch.fillColor = args.fillColor;
-			if (args.strokeColor) {
-				if (kind === "point") patch.pointStrokeColor = args.strokeColor;
-				else patch.strokeColor = args.strokeColor;
-			}
-			/* Een kleuring op eigenschap vervangt de hoofdkleur; die zetten maakt er een eind aan. */
-			const replacesMainColor = kind === "line" ? Boolean(args.strokeColor) : Boolean(args.fillColor);
-			if (replacesMainColor) layer.dataDriven.set(undefined);
-			layer.setStyle(patch);   // bouwt de laag één keer opnieuw op
-		} else {
-			layer.setColors({ fillColor: args.fillColor, strokeColor: args.strokeColor });
-			if (kind === "point" && args.strokeColor) notes.push("punten in deze laag zijn pinnen en hebben geen omlijning");
+		/* Een punt heeft een eigen omlijning (pointStrokeColor); lijnen en vlakken strokeColor. */
+		const patch: Partial<LayerStyle> = {};
+		if (args.fillColor) patch.fillColor = args.fillColor;
+		if (args.strokeColor) {
+			if (kind === "point") patch.pointStrokeColor = args.strokeColor;
+			else patch.strokeColor = args.strokeColor;
 		}
+		/* Een kleuring op eigenschap vervangt de hoofdkleur; die zetten maakt er een eind aan. */
+		const replacesMainColor = kind === "line" ? Boolean(args.strokeColor) : Boolean(args.fillColor);
+		if (replacesMainColor) layer.dataDriven.set(undefined);
+		layer.setStyle(patch);   // bouwt de laag één keer opnieuw op
+
+		const notes: string[] = [];
 		if (kind === "line" && args.fillColor) notes.push("fill_color genegeerd: lijnen hebben geen vulling");
 
 		const parts = [
