@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Accordion, Checkbox } from "carbon-components-svelte";
+	import { Accordion } from "carbon-components-svelte";
 
 	import LayerControl from "../../MapToolLayerManager/MapToolLayerControl.svelte";
 	import { _ } from "svelte-i18n";
@@ -10,7 +10,7 @@
 	import type { LayerLibrary } from "$lib/map-core/layer-library";
 
 	export let library: LayerLibrary;
-	/* The layers on the map: a dataset that is added is shown with the full layer controls. */
+	/* The layers on the map: every dataset is on it (hidden until switched on), with the full layer controls. */
 	export let layers: Array<Layer>;
 
 	$: libraryGroups = library.groups;
@@ -31,14 +31,6 @@
 				{@const layer = layers.find((candidate) => candidate.config === config)}
 				{#if layer}
 					<LayerControl {layer} />
-				{:else}
-					<div class="dataset" title={config.description}>
-						<Checkbox
-							checked={false}
-							labelText={config.title}
-							on:check={() => config.added.set(true)}
-						/>
-					</div>
 				{/if}
 			{/each}
 		{/if}
@@ -49,9 +41,5 @@
 	.gaia-label {
 		margin-top: var(--cds-spacing-05);
 		padding: 0 var(--cds-spacing-05);
-	}
-
-	.dataset {
-		padding: var(--cds-spacing-03) var(--cds-spacing-05);
 	}
 </style>

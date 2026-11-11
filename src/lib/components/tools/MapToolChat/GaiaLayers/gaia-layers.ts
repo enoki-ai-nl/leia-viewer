@@ -1,5 +1,3 @@
-import { get } from "svelte/store";
-
 import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
@@ -57,8 +55,8 @@ export function datasetLayerConfig(
 /* Vlakken als GeoJSON in plaats van vector tiles: Cesium's MVTDataProvider (experimenteel in
    1.146) legt ingewikkelde vlakken stuk op het terrein - slierten, gaten, en met meerdere
    vlaklagen tegelijk een render-crash. GeoJsonLayer legt ze met GroundPrimitive en blijft
-   aanklikbaar en herkleurbaar. Nadeel: de hele laag komt in één keer, dus pas als de
-   gebruiker hem aanvinkt. */
+   aanklikbaar en herkleurbaar. Nadeel: de hele laag komt in één keer; dat gebeurt pas als
+   de laag voor het eerst zichtbaar wordt (zie CesiumLayer.ensureLoaded). */
 export function isPolygonDataset(info: TileInfo): boolean {
 	return /polygon/i.test(info.geometry_type ?? "");
 }
@@ -66,7 +64,7 @@ export function isPolygonDataset(info: TileInfo): boolean {
 export function datasetGeoJsonConfig(
 	api: ApiContext,
 	info: TileInfo,
-	options: { id: string; groupId: string; title?: string; description?: string }
+	options: { id: string; groupId: string; title?: string; defaultOn?: boolean; description?: string }
 ): LayerConfig {
 	return new LayerConfig({
 		id: options.id,
@@ -74,7 +72,7 @@ export function datasetGeoJsonConfig(
 		description: options.description,
 		type: "geojson",
 		groupId: options.groupId,
-		defaultOn: true,
+		defaultOn: options.defaultOn ?? false,
 		settings: {
 			url: `${api.apiUrl}/get/${encodeURIComponent(info.id)}`,
 			headers: () => authHeaders(api),
@@ -132,12 +130,11 @@ export async function addGaiaLayers(library: LayerLibrary, apiUrl: string): Prom
 			title: dataset.display_name ?? dataset.original_filename,
 			description: describeDataset(info)
 		};
-		if (isPolygonDataset(info)) {
-			/* Niet toevoegen: het vinkje in GaiaLayersSection doet dat, en laadt dan pas de data. */
-			library.addLayerConfig(datasetGeoJsonConfig(api, info, options));
-			continue;
-		}
-		const config = datasetLayerConfig(api, info, options);
+		/* Allemaal verborgen op de kaart, zodat elke laag de volledige laagbediening heeft;
+		   de data komt pas als de gebruiker de laag aanzet. */
+		const config = isPolygonDataset(info)
+			? datasetGeoJsonConfig(api, info, options)
+			: datasetLayerConfig(api, info, options);
 		library.addLayerConfig(config);
 		config.added.set(true);
 	}
