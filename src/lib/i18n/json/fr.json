@@ -46,6 +46,7 @@
                 "set_layer_visibility": "Afficher ou masquer des couches",
                 "color_layer_by_property": "Colorer des couches selon une propriété",
                 "set_layer_style": "Définir les couleurs des couches",
+                "ask_clarifying_questions": "Poser des questions de suivi",
                 "remove_layer": "Supprimer des couches"
             },
             "export": "Exporter la conversation en JSON",
@@ -55,6 +56,13 @@
             "placeholder": "Posez une question",
             "send": "Envoyer la question",
             "thinking": "Réflexion en cours",
+            "choice": {
+                "recommended": "Recommandé",
+                "because": "Recommandé parce que : {reason}",
+                "hintOne": "Cliquez sur une réponse, ou tapez la vôtre.",
+                "hintMany": "Répondez à chaque question, ou tapez votre propre réponse.",
+                "typed": "Répondu avec vos propres mots."
+            },
             "stop": "Arrêter",
             "stopped": "Arrêté.",
             "resize": "Redimensionner le chat",

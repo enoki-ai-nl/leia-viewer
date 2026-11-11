@@ -46,6 +46,7 @@
                 "set_layer_visibility": "Lagen tonen of verbergen",
                 "color_layer_by_property": "Lagen kleuren op basis van een eigenschap",
                 "set_layer_style": "De kleuren van lagen instellen",
+                "ask_clarifying_questions": "Vervolgvragen stellen",
                 "remove_layer": "Lagen verwijderen"
             },
             "export": "Exporteer gesprek als JSON",
@@ -55,6 +56,13 @@
             "placeholder": "Stel een vraag",
             "send": "Verstuur vraag",
             "thinking": "Bezig met nadenken",
+            "choice": {
+                "recommended": "Aanbevolen",
+                "because": "Aanbevolen omdat: {reason}",
+                "hintOne": "Klik op een antwoord, of typ zelf een antwoord.",
+                "hintMany": "Beantwoord elke vraag, of typ zelf een antwoord.",
+                "typed": "Zelf beantwoord."
+            },
             "stop": "Stoppen",
             "stopped": "Gestopt.",
             "resize": "Grootte van de chat aanpassen",

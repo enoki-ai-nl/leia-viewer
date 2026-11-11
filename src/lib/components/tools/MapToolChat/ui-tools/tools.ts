@@ -446,9 +446,168 @@ const setLayerStyle: UiTool<SetStyleArgs> = {
 	}
 };
 
+/* --- ask_clarifying_questions ------------------------------------------------------- */
+
+/* Vervolgvragen met keuzeknoppen (werkitem #55), met een aanbevolen keuze (#56).
+
+   Is een vraag dubbelzinnig ("Oosterland" ligt in Zeeland én in Noord-Holland), dan vraagt de
+   agent door in plaats van zelf te kiezen. De viewer toont de vragen met knoppen; de keuze gaat
+   terug als resultaat van deze tool, samen met een nieuw bericht van de gebruiker (zie
+   chat-session). De gebruiker kan ook zelf een antwoord typen. Hooguit 3 vragen per beurt en 3
+   knoppen per vraag; geen maximum op het aantal rondes.
+
+   Een optie kan aanbevolen zijn, met een reden. De aanbevolen knop is de knop waar iemand zonder
+   nadenken op klikt, dus de agent mag alleen iets aanbevelen met een concrete grond (wat in het
+   kaartbeeld of op de kaart staat, of een eerder antwoord), en moet die grond noemen. */
+
+export const MAX_QUESTIONS = 3;
+export const MAX_OPTIONS = 3;
+
+export interface ChoiceOption {
+	label: string;
+	recommended: boolean;
+	/* Waarom deze optie aanbevolen is; alleen bij een aanbevolen optie. */
+	reason?: string;
+}
+
+export interface ChoiceQuestion {
+	question: string;
+	options: ChoiceOption[];
+}
+
+export interface AskArgs {
+	questions: ChoiceQuestion[];
+}
+
+function text(value: unknown, what: string): string {
+	if (typeof value !== "string" || value.trim() === "") throw new Error(`${what} moet een niet-lege tekst zijn.`);
+	return value.trim();
+}
+
+function parseOption(raw: unknown, q: number, o: number): ChoiceOption {
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+		throw new Error(`Optie ${o + 1} van vraag ${q + 1} moet een object zijn met een "label".`);
+	}
+	const obj = raw as Record<string, unknown>;
+	/* Een aanbeveling die niet klopt, laat de vraag zelf niet mislukken: de vraag is waar het om
+	   gaat. Een reden zonder aanbeveling vervalt; een aanbeveling zonder reden ook, want de
+	   gebruiker moet kunnen zien waarop ze gebaseerd is. */
+	const reason = typeof obj.reason === "string" && obj.reason.trim() ? obj.reason.trim() : undefined;
+	const recommended = obj.recommended === true && reason !== undefined;
+	return {
+		label: text(obj.label, `Het label van optie ${o + 1} van vraag ${q + 1}`),
+		recommended,
+		reason: recommended ? reason : undefined
+	};
+}
+
+export function parseAsk(raw: unknown): AskArgs {
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+		throw new Error("De argumenten moeten een JSON-object zijn.");
+	}
+	const questions = (raw as Record<string, unknown>).questions;
+	if (!Array.isArray(questions) || questions.length < 1 || questions.length > MAX_QUESTIONS) {
+		throw new Error(`"questions" moet 1 tot ${MAX_QUESTIONS} vragen bevatten.`);
+	}
+	return {
+		questions: questions.map((rawQuestion, q) => {
+			if (typeof rawQuestion !== "object" || rawQuestion === null || Array.isArray(rawQuestion)) {
+				throw new Error(`Vraag ${q + 1} moet een object zijn met "question" en "options".`);
+			}
+			const obj = rawQuestion as Record<string, unknown>;
+			const options = obj.options;
+			if (!Array.isArray(options) || options.length < 2 || options.length > MAX_OPTIONS) {
+				throw new Error(`Vraag ${q + 1} moet 2 tot ${MAX_OPTIONS} opties hebben.`);
+			}
+			let parsed = options.map((option, o) => parseOption(option, q, o));
+			/* Meer dan één aanbevolen optie is geen aanbeveling: dan geen. */
+			if (parsed.filter((option) => option.recommended).length > 1) {
+				parsed = parsed.map((option) => ({ ...option, recommended: false, reason: undefined }));
+			}
+			const labels = parsed.map((option) => option.label.toLowerCase());
+			if (new Set(labels).size !== labels.length) throw new Error(`Vraag ${q + 1} heeft twee opties met hetzelfde label.`);
+			return { question: text(obj.question, `De tekst van vraag ${q + 1}`), options: parsed };
+		})
+	};
+}
+
+/* Wat de agent te horen krijgt als de gebruiker op knoppen heeft geklikt. */
+export function describeAnswers(args: AskArgs, answers: number[]): string {
+	return (
+		"The user answered by clicking: " +
+		args.questions
+			.map(({ question, options }, i) => {
+				const option = options[answers[i]];
+				return `"${question}" -> "${option.label}"${option.recommended ? " (the option you recommended)" : ""}`;
+			})
+			.join("; ") +
+		"."
+	);
+}
+
+/* Wat de agent te horen krijgt als de gebruiker niet klikte maar zelf typte. */
+export const ANSWERED_IN_OWN_WORDS =
+	"The user did not click an option; they answered in their own words in their next message.";
+
+export const askClarifyingQuestions: UiTool<AskArgs> = {
+	name: "ask_clarifying_questions",
+	interactive: true,
+	description:
+		"Ask the user one to three follow-up questions with answer buttons when their request is ambiguous and the " +
+		"answer would change what you do (e.g. \"Oosterland\" exists in Zeeland and in Noord-Holland; \"combine A and B\" " +
+		"can mean different results). Do this instead of picking one interpretation yourself. Ask only what you need; " +
+		`at most ${MAX_QUESTIONS} questions, each with 2 to ${MAX_OPTIONS} short, clearly different options. The user ` +
+		"may also type their own answer instead. Call this tool alone, then wait: the answer comes in the next turn. " +
+		"Use it for EVERY question to the user, also when you want to ask something after looking things up: never " +
+		"write the question or its options in your text while this tool is available.\n" +
+		"You may mark at most one option per question as recommended, ONLY when there is a concrete reason in this " +
+		"conversation - what is on the user's map or in their map view, or what they said before - and then give that " +
+		"reason (e.g. \"lies in your current map view\"). Which option is more common, more likely or better known is " +
+		"NOT a reason: then recommend nothing. Users tend to click the recommended option without thinking.",
+	defaultApproval: "auto",
+	parameters: () => ({
+		type: "object",
+		properties: {
+			questions: {
+				type: "array",
+				minItems: 1,
+				maxItems: MAX_QUESTIONS,
+				items: {
+					type: "object",
+					properties: {
+						question: { type: "string", description: "The question, short, in the user's language." },
+						options: {
+							type: "array",
+							minItems: 2,
+							maxItems: MAX_OPTIONS,
+							items: {
+								type: "object",
+								properties: {
+									label: { type: "string", description: "The answer as it appears on the button; a few words." },
+									recommended: { type: "boolean", description: "At most one option per question; only with a concrete reason." },
+									reason: { type: "string", description: "Required when recommended: why, in a few words, in the user's language." }
+								},
+								required: ["label"]
+							}
+						}
+					},
+					required: ["question", "options"]
+				}
+			}
+		},
+		required: ["questions"]
+	}),
+	parse: parseAsk,
+	describe: (args) => args.questions.map((q) => q.question).join(" / "),
+	/* Wordt niet uitgevoerd: de chat toont de vragen en wacht op de gebruiker (zie chat-session). */
+	execute: async () => {
+		throw new Error("ask_clarifying_questions wacht op de gebruiker en wordt niet uitgevoerd.");
+	}
+};
+
 /* Op `UiTool<unknown>` gezet aan de rand van de lijst: aanroepers gaan altijd eerst
    langs tool.parse, en dat maakt het argumenttype betrouwbaar. */
-export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, setLayerStyle, removeLayer] as unknown as UiTool<unknown>[];
+export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, setLayerStyle, removeLayer, askClarifyingQuestions] as unknown as UiTool<unknown>[];
 
 export function getUiTool(name: string): UiTool<unknown> | undefined {
 	return UI_TOOLS.find((tool) => tool.name === name);

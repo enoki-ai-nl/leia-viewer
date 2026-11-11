@@ -14,7 +14,8 @@
 <div class="ui-settings">
 	<span class="ui-settings__title">{$_("tools.chat.settings")}</span>
 	<span class="ui-settings__hint">{$_("tools.chat.settingsHint")}</span>
-	{#each UI_TOOLS as tool}
+	<!-- Een vraag aan de gebruiker heeft geen goedkeuring nodig. -->
+	{#each UI_TOOLS.filter((tool) => !tool.interactive) as tool}
 		<Checkbox checked={($uiToolApproval[tool.name] ?? tool.defaultApproval) === "auto"} 
 		on:check={(event) => setApproval(tool.name, event.detail ? "auto" : "ask")}
 		labelText={label(tool.name)} />

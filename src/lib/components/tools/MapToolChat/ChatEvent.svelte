@@ -8,11 +8,14 @@
 	import type { ChatSession } from "./chat-session";
 	import ToolStep from "./ToolStep.svelte";
 	import UiToolStep from "./ui-tools/UiToolStep.svelte";
+	import ChoiceStep from "./ui-tools/ChoiceStep.svelte";
 
 	/* Eén regel in het gesprek: een vraag, een antwoord, of een tussenstap. */
 	export let event: ChatEvent;
 	/* Voor de knoppen onder een instructie die op de gebruiker wacht. */
 	export let session: ChatSession;
+
+	const { busy } = session;
 
 	const renderMarkdown = (text: string) => DOMPurify.sanitize(marked.parse(text, { async: false }));
 </script>
@@ -30,6 +33,13 @@
 		on:apply={() => session.applyUi(toolCallId)}
 		on:dismiss={() => session.dismissUi(toolCallId)}
 		on:always={() => session.alwaysApplyUi(toolCallId, toolName)}
+	/>
+{:else if event.type === "choice"}
+	{@const { toolCallId } = event}
+	<ChoiceStep
+		choice={event}
+		busy={$busy}
+		on:choose={(e) => session.choose(toolCallId, e.detail.question, e.detail.option)}
 	/>
 {:else if event.type === "tool"}
 	<ToolStep step={event} />

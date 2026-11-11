@@ -46,6 +46,7 @@
                 "set_layer_visibility": "Show or hide layers",
                 "color_layer_by_property": "Colour layers by a property",
                 "set_layer_style": "Set the colours of layers",
+                "ask_clarifying_questions": "Ask follow-up questions",
                 "remove_layer": "Remove layers"
             },
             "export": "Export conversation as JSON",
@@ -55,6 +56,13 @@
             "placeholder": "Ask a question",
             "send": "Send question",
             "thinking": "Thinking",
+            "choice": {
+                "recommended": "Recommended",
+                "because": "Recommended because: {reason}",
+                "hintOne": "Click an answer, or type your own.",
+                "hintMany": "Answer each question, or type your own answer.",
+                "typed": "Answered in your own words."
+            },
             "stop": "Stop",
             "stopped": "Stopped.",
             "resize": "Resize the chat",

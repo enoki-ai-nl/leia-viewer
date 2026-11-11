@@ -1,3 +1,5 @@
+import type { ChoiceQuestion } from "./ui-tools/tools";
+
 /* Wat het chatpaneel toont, in de volgorde waarin het gebeurde. */
 
 export type UiStatus = "awaiting" | "running" | "applied" | "dismissed" | "failed" | "expired";
@@ -24,6 +26,17 @@ export interface ToolEvent {
 	error?: string;
 }
 
+/* Vervolgvragen van de assistent met keuzeknoppen (ask_clarifying_questions in ui-tools/tools.ts). `answers` houdt per
+   vraag de gekozen optie bij. `open` tot alles beantwoord is (`answered`), de gebruiker zelf
+   een antwoord typte (`typed`). */
+export interface ChoiceEvent {
+	type: "choice";
+	toolCallId: string;
+	questions: ChoiceQuestion[];
+	answers: (number | undefined)[];
+	status: "open" | "answered" | "typed";
+}
+
 export type ChatEvent =
 	/* De vraag van de gebruiker. */
 	| { type: "question"; text: string }
@@ -31,6 +44,7 @@ export type ChatEvent =
 	| { type: "answer"; markdown: string }
 	| ToolEvent
 	| UiEvent
+	| ChoiceEvent
 	/* Een mislukte run, of een vraag die niet verstuurd kon worden. */
 	| { type: "error"; error: string }
 	/* De gebruiker heeft de run gestopt. */

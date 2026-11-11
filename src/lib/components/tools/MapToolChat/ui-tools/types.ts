@@ -22,6 +22,9 @@ export interface UiTool<Args = unknown> {
 	/* De agent leest dit: zeg wanneer de tool past en wat elk argument betekent. */
 	description: string;
 	defaultApproval: ApprovalMode;
+	/* Wacht op een antwoord van de gebruiker in plaats van iets uit te voeren (zie ask_clarifying_questions in tools.ts):
+	   de chat toont het zelf, `execute` wordt niet aangeroepen en er valt niets goed te keuren. */
+	interactive?: true;
 	/* Een tool die op een laag werkt, wordt alleen aangeboden als er zo'n laag is,
 	   en `layer_ref` mag dan alleen een van die lagen zijn. Zonder dit werkt de
 	   tool niet op een bestaande laag. */

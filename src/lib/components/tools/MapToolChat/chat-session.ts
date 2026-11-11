@@ -7,13 +7,14 @@ import type { Map } from "$lib/map-cesium/map";
 import { getWfsAttributeNames } from "$lib/map-cesium/providers/wfs-attributes";
 
 import { chatApiUrl, datasetsChanged } from "./chat-store";
-import type { ChatEvent, ToolEvent, UiEvent } from "./chat-types";
+import type { ChatEvent, ChoiceEvent, ToolEvent, UiEvent } from "./chat-types";
 import { exportConversation } from "./conversation-export";
 import { authHeaders, getUserKey } from "./user-key";
 import { getUiTool, toAgUiTools } from "./ui-tools/tools";
 import { labelLayers, layerProperties, newId } from "./ui-tools/layers";
 import { uiToolApproval, setApproval } from "./ui-tools/settings";
 import type { UiTool } from "./ui-tools/types";
+import { ANSWERED_IN_OWN_WORDS, describeAnswers, type AskArgs } from "./ui-tools/tools";
 
 interface UiCall {
 	tool: UiTool<unknown>;
@@ -39,6 +40,9 @@ export interface ChatSession {
 	/* Stopt de lopende run; wat de agent al af had blijft staan. */
 	stop(): void;
 	applyUi(toolCallId: string): void;
+	/* Kies een optie bij een vervolgvraag; zijn alle vragen beantwoord, dan gaat het antwoord
+	   meteen naar de agent. */
+	choose(toolCallId: string, questionIndex: number, optionIndex: number): void;
 	dismissUi(toolCallId: string): void;
 	alwaysApplyUi(toolCallId: string, toolName: string): void;
 	exportConversation(reason: string): Promise<void>;
@@ -110,15 +114,54 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 		});
 	}
 
+	/* --- Vervolgvragen met keuzeknoppen (ask_clarifying_questions in ui-tools/tools.ts) --- */
+
+	/* De vragen die op een antwoord wachten, met hun argumenten. */
+	const openChoices: Record<string, AskArgs> = {};
+
+	function patchChoice(toolCallId: string, patch: Partial<ChoiceEvent>) {
+		events.update((list) =>
+			list.map((e) => (e.type === "choice" && e.toolCallId === toolCallId ? { ...e, ...patch } : e))
+		);
+	}
+
+	function choose(toolCallId: string, questionIndex: number, optionIndex: number) {
+		const args = openChoices[toolCallId];
+		const event = get(events).find((e): e is ChoiceEvent => e.type === "choice" && e.toolCallId === toolCallId);
+		if (!args || !event || get(busy)) return;
+		const answers = [...event.answers];
+		answers[questionIndex] = optionIndex;
+		patchChoice(toolCallId, { answers });
+		if (answers.length < args.questions.length || answers.some((answer) => answer === undefined)) return;
+
+		/* Alles beantwoord: de keuze als resultaat van de tool, en als bericht van de gebruiker,
+		   zodat het gesprek gewoon doorgaat (en de keuze in de chat staat). */
+		delete openChoices[toolCallId];
+		const chosen = answers as number[];
+		patchChoice(toolCallId, { status: "answered" });
+		pendingResults.push({ toolCallId, content: describeAnswers(args, chosen) });
+		void ask(args.questions.map((q, i) => q.options[chosen[i]].label).join("; "));
+	}
+
 	function handleUiCall(toolCallId: string, toolName: string, rawArgs: unknown) {
 		const tool = getUiTool(toolName)!;
 		let args: unknown;
 		try {
 			args = tool.parse(rawArgs);
 		} catch (error) {
-			/* De agent hoort waarom en kan het bij de volgende vraag opnieuw proberen. */
-			push({ type: "ui", toolCallId, toolName, summary: toolName, status: "failed" });
+			/* De agent hoort waarom en kan het bij de volgende vraag opnieuw proberen. Zonder
+			   geldige argumenten valt er niets te beschrijven: dan het label van de tool. */
+			const summary = get(_)(`tools.chat.uiTools.${toolName}`, { default: toolName });
+			push({ type: "ui", toolCallId, toolName, summary, status: "failed" });
 			finishUi(toolCallId, "failed", errorText(error));
+			return;
+		}
+
+		/* Een vraag aan de gebruiker: tonen en wachten, niets uitvoeren of goedkeuren. */
+		if (tool.interactive) {
+			const ask = args as AskArgs;
+			openChoices[toolCallId] = ask;
+			push({ type: "choice", toolCallId, questions: ask.questions, answers: [], status: "open" });
 			return;
 		}
 
@@ -222,6 +265,13 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 				delete awaiting[toolCallId];
 			}
 
+			/* Vervolgvragen waar niet op geklikt is: de gebruiker antwoordt met wat hij nu typte. */
+			for (const toolCallId of Object.keys(openChoices)) {
+				patchChoice(toolCallId, { status: "typed" });
+				pendingResults.push({ toolCallId, content: ANSWERED_IN_OWN_WORDS });
+				delete openChoices[toolCallId];
+			}
+
 			/* Eerst wat er met eerdere instructies is gebeurd, dan de nieuwe vraag. */
 			for (const { toolCallId, content, error } of pendingResults) {
 				agent.addMessage({ id: newId(), role: "tool", toolCallId, content, error });
@@ -286,6 +336,7 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 		ask,
 		stop,
 		applyUi,
+		choose,
 		dismissUi,
 		alwaysApplyUi,
 		exportConversation: exportCurrent
