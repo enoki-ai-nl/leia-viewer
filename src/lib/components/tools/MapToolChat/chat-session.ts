@@ -6,7 +6,7 @@ import { HttpAgent, type AgentSubscriber } from "@ag-ui/client";
 import type { Map } from "$lib/map-cesium/map";
 import { getWfsAttributeNames } from "$lib/map-cesium/providers/wfs-attributes";
 
-import { chatApiUrl } from "./chat-store";
+import { chatApiUrl, datasetsChanged } from "./chat-store";
 import type { ChatEvent, ToolEvent, UiEvent } from "./chat-types";
 import { exportConversation } from "./conversation-export";
 import { authHeaders, getUserKey } from "./user-key";
@@ -21,6 +21,9 @@ interface UiCall {
 }
 
 const DECLINED = "The user declined this instruction.";
+
+/* Backend-tools die een dataset in de database zetten: daarna moet de lijst met AI-lagen hem tonen. */
+const DATASET_TOOLS = new Set(["wfs_load_to_table"]);
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -169,6 +172,8 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 				/* gewone tekst: laten zoals hij is */
 			}
 			patchTool(event.toolCallId, { status: "done", content });
+			const call = get(events).find((e) => e.type === "tool" && e.toolCallId === event.toolCallId);
+			if (call?.type === "tool" && DATASET_TOOLS.has(call.tool)) datasetsChanged.update((n) => n + 1);
 		},
 
 		/* Geen usage betekent dat geen modelaanroep iets meldde, niet dat het nul tokens waren. */

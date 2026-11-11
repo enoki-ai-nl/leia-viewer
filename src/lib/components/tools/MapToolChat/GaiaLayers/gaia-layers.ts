@@ -71,13 +71,18 @@ function describeDataset(info: TileInfo): string {
 
 /* Laadt de datasets van de API en zet ze als laag op de kaart (verborgen, de gebruiker
    zet ze aan), onder één groep in de bibliotheek. Een dataset die niet te laden is wordt
-   overgeslagen en gelogd; de rest blijft werken. Roep dit één keer per API aan. */
+   overgeslagen en gelogd; de rest blijft werken. Opnieuw aanroepen voegt alleen nieuwe
+   datasets toe (zie datasetsChanged). Geeft het aantal toegevoegde lagen terug. */
 export async function addGaiaLayers(library: LayerLibrary, apiUrl: string): Promise<number> {
 	const api: ApiContext = { apiUrl, userKey: await getUserKey(apiUrl) };
 
 	const response = await fetch(`${apiUrl}/datasets`, { headers: authHeaders(api) });
 	if (!response.ok) throw new Error(`Datasets ophalen mislukt: ${response.status}`);
-	const datasets: DatasetSummary[] = (await response.json()).datasets ?? [];
+	/* Alleen wat nog niet in de bibliotheek staat: tileinfo telt de data, en dit wordt opnieuw
+	   aangeroepen als de agent een dataset heeft toegevoegd. */
+	const datasets: DatasetSummary[] = ((await response.json()).datasets ?? []).filter(
+		(dataset: DatasetSummary) => !library.findLayer(`gaia-${dataset.id}`)
+	);
 
 	const infos = await Promise.all(
 		datasets.map(async (dataset) => {

@@ -9,7 +9,7 @@
 
 	import ChatPanel from "./ChatPanel.svelte";
 	import GaiaLayersSection from "./GaiaLayers/GaiaLayersSection.svelte";
-	import { chatApiUrl } from "./chat-store";
+	import { chatApiUrl, datasetsChanged } from "./chat-store";
 	import { addGaiaLayers } from "./GaiaLayers/gaia-layers";
 	import { _ } from "svelte-i18n";
 
@@ -31,13 +31,21 @@
 
 	const layers = map.layers;
 
-	/* The datasets of the same API as the chat, as layers of this map. */
-	let gaiaLayersFor: string | undefined;
-	$: if (map && $chatApiUrl && gaiaLayersFor !== $chatApiUrl) {
-		gaiaLayersFor = $chatApiUrl;
-		addGaiaLayers(map.layerLibrary, $chatApiUrl).catch((error) => {
-			console.error("Could not load the Gaia layers:", error);
-		});
+	/* The datasets of the same API as the chat, as layers of this map: once, and again whenever
+	   the agent has put a new dataset in the database. addGaiaLayers only adds what is new.
+	   Loads run one after the other, so two refreshes never add the same dataset twice. */
+	let loadedFor: string | undefined;
+	let loadedAt = -1;
+	let loading: Promise<unknown> = Promise.resolve();
+	$: if (map && $chatApiUrl && (loadedFor !== $chatApiUrl || loadedAt !== $datasetsChanged)) {
+		loadedFor = $chatApiUrl;
+		loadedAt = $datasetsChanged;
+		const apiUrl = $chatApiUrl;
+		loading = loading.then(() =>
+			addGaiaLayers(map.layerLibrary, apiUrl).catch((error) => {
+				console.error("Could not load the Gaia layers:", error);
+			})
+		);
 	}
 
 	/* Height of the chat in px, set by dragging the handle; undefined keeps the CSS default. */
