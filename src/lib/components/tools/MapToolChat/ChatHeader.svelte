@@ -49,16 +49,16 @@
 		<span>{$_("tools.chat.title")}</span>
 		{#if modelName}
 			<span class="chat-header__meta">
-				<span>{$_("tools.chat.modelVia", { values: { model: modelName, provider: providerLabel } })}</span>
+				<span class="chat-header__model" title={$_("tools.chat.modelExplanation")}>{$_("tools.chat.modelVia", { values: { model: modelName, provider: providerLabel } })}</span>
 				{#if totalTokens > 0}
-					&middot;
 					<span
 						class="chat-header__tokens"
 						title={$_("tools.chat.tokens", {
 							values: { count: totalTokens.toLocaleString($locale ?? undefined) }
 						})}
 					>
-						<Currency size={16} />
+						&middot;
+						<Currency size={14} />
 						{compactTokens.format(totalTokens)}
 					</span>
 				{/if}
@@ -112,19 +112,24 @@
 	.chat-header__meta {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.25rem;
 		opacity: 0.7;
 		font-size: 0.7rem;
 		overflow-wrap: anywhere;
+	}
+
+	.chat-header__model {
+		cursor: help;
 	}
 
 	/* Het getal en zijn eenheid ("13,6K") niet over twee regels. */
 	.chat-header__tokens {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: 0.15rem;
 		flex-shrink: 0;
 		white-space: nowrap;
+		cursor: help;
 	}
 
 	.chat-header__actions {

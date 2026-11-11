@@ -36,8 +36,9 @@
             "label": "Chat",
             "title": "Agent IA",
             "modelVia": "{model} via {provider}",
+            "modelExplanation": "Voici le modèle de langage utilisé par l'agent, et la partie qui le fait fonctionner.",
             "ollamaLocal": "Ollama (local)",
-            "tokens": "{count} jetons dans cette conversation",
+            "tokens": "Voici le nombre de jetons ({count}) dans cette session. Un jeton est une façon de mesurer une quantité de texte. Un mot se compose d'environ 1 à 10 jetons.",
             "settings": "Instructions de l'assistant",
             "settingsHint": "Cochez ce que l'assistant peut faire sans demander d'abord.",
             "uiTools": {

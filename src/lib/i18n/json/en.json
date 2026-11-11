@@ -36,8 +36,9 @@
             "label": "Chat",
             "title": "AI agent",
             "modelVia": "{model} via {provider}",
+            "modelExplanation": "This is the language model the agent uses, and the party that runs it.",
             "ollamaLocal": "Ollama (local)",
-            "tokens": "{count} tokens in this conversation",
+            "tokens": "This is the number of tokens ({count}) in this session. A token is a way of measuring an amount of text. A word consists of roughly 1-10 tokens.",
             "settings": "Assistant instructions",
             "settingsHint": "Check what the assistant may do without asking first.",
             "uiTools": {

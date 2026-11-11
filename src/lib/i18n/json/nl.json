@@ -36,8 +36,9 @@
             "label": "Chat",
             "title": "AI-agent",
             "modelVia": "{model} via {provider}",
+            "modelExplanation": "Dit is het taalmodel dat de agent gebruikt, en de partij die het draait.",
             "ollamaLocal": "Ollama (lokaal)",
-            "tokens": "{count} tokens in dit gesprek",
+            "tokens": "Dit is het aantal tokens ({count}) in deze sessie. Een token is een manier om hoeveelheid tekst te bepalen. Een woord bestaat uit ongeveer 1-10 tokens.",
             "settings": "Instellingen van de agent",
             "settingsHint": "Vink aan wat de agent mag doen zonder eerst te vragen.",
             "uiTools": {
