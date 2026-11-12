@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from "svelte";
+	import { setContext, tick } from "svelte";
 	import { _ } from "svelte-i18n";
 
 	import type { Map } from "$lib/map-cesium/map";
@@ -10,12 +10,19 @@
 	import ChatInput from "./ChatInput.svelte";
 	import ExportDialog from "./ExportDialog.svelte";
 	import UiToolSettings from "./ui-tools/UiToolSettings.svelte";
+	import { ZOOM_CONTEXT } from "./artifact";
+	import { zoomToBbox, type Bbox } from "./ui-tools/zoom";
 
 	export let map: Map | undefined;
 
 	/* Het gesprek zelf (agent, instructies, tokens) zit in de sessie; dit paneel toont het. */
 	const session = createChatSession(() => map);
 	const { events, busy, totalTokens, userKey } = session;
+
+	/* Een regel van een zoekresultaat met een geometrie zoomt de kaart naar die plek (ResultTable). */
+	setContext(ZOOM_CONTEXT, (bbox: Bbox) => {
+		if (map) zoomToBbox(map, bbox);
+	});
 
 	/* Het keuzemenu voor wat de assistent zonder te vragen mag doen. */
 	let settingsOpen = false;

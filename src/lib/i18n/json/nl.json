@@ -134,7 +134,8 @@
                 "noApiUrl": "De backend-URL is niet bekend.",
                 "notSignedIn": "Niet ingelogd: er is geen sleutel ingevuld.",
                 "unknownKey": "Deze sleutel is niet bekend."
-            }
+            },
+            "zoomToRow": "Toon op de kaart"
         },
         "info": {
             "label": "Informatie",
@@ -491,7 +492,7 @@
             "storyChartNoData": "Geen Data",
             "storyChartNoDataInPolygon": "Geen data in het getekende projectgebied",
             "basemap": "Achtergrondkaart",
-            "polygonTitle": "Projectgebied", 
+            "polygonTitle": "Projectgebied",
             "requestDrawPolygon": "Teken een projectgebied in",
             "uploadPolygon": "Projectgebied Uploaden",
             "drawPolygon": "Projectgebied Tekenen",
@@ -596,5 +597,4 @@
             "invalidPolygon": "Ongeldig polygoon: Zorg ervoor dat het polygoon zichzelf niet snijdt."
         }
     }
-
 }

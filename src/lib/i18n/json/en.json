@@ -134,7 +134,8 @@
                 "noApiUrl": "The backend URL is unknown.",
                 "notSignedIn": "Not signed in: no key was entered.",
                 "unknownKey": "This key is not known."
-            }
+            },
+            "zoomToRow": "Show on the map"
         },
         "info": {
             "label": "Information",
@@ -589,5 +590,4 @@
             "invalidPolygon": "Invalid polygon: The polygon cannot intersect itself."
         }
     }
-
 }

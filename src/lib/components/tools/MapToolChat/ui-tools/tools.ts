@@ -1,13 +1,11 @@
 import { get } from "svelte/store";
-import * as Cesium from "cesium";
-
-import { getCameraPositionFromBoundingSphere } from "$lib/map-cesium/utils/layer-utils";
 
 import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
 import { findLayer, isStylable, labelLayers, layerProperties, newId } from "./layers";
 import { describeStyle, otherRuleColor } from "./styles";
+import { zoomToBbox } from "./zoom";
 import { fetchTileInfo } from "./datasets-api";
 import { datasetConfigs, datasetMvtConfig, GAIA_GROUP_ID, GAIA_GROUP_TITLE, sessionLayerId } from "../GaiaLayers/gaia-layers";
 import { isSessionLayer, sessionLayer } from "$lib/map-core/session-layer";
@@ -77,7 +75,7 @@ interface AddLayerArgs {
 const addLayer: UiTool<AddLayerArgs> = {
 	name: "add_layer",
 	description:
-		"Add a layer to the user's map. service_type 'wfs' or 'wms': a web service, only to look at - use its url and " +
+		"Add a layer to the user's map; the map zooms to it. service_type 'wfs' or 'wms': a web service, only to look at - use its url and " +
 		"layer name exactly as the user gave them or as a dataset search returned them, never invent either; to " +
 		"query or analyse it, load it with wfs_load_to_table instead. service_type 'dataset': one of the user's own " +
 		"datasets (layer_name is its table name from AVAILABLE DATASETS, or the table you just loaded or created); " +
@@ -188,7 +186,7 @@ async function addDatasetLayer(args: AddLayerArgs, context: UiToolContext): Prom
 	}
 	layer.visible.set(true);
 	if (config.cameraPosition) map.flyTo(config.cameraPosition);
-	return `Dataset "${layer.title}" staat op de kaart.` + (info
+	return `Dataset "${layer.title}" staat op de kaart${config.cameraPosition ? " en de kaart toont hem" : ""}.` + (info
 		? ` (${info.feature_count} objecten). Eigenschappen om op te kleuren: ${
 			info.properties.slice(0, 15).map((p) => `${p.name} (${p.kind})`).join(", ")
 		}.`
@@ -528,9 +526,6 @@ interface ZoomArgs {
 	name?: string;
 }
 
-/* Rond een punt: een paar honderd meter, zodat een adres en zijn straat in beeld zijn. */
-const POINT_MARGIN_DEGREES = 0.003;
-
 function finiteNumber(obj: Record<string, unknown>, key: string): number {
 	const value = typeof obj[key] === "string" ? Number(obj[key]) : obj[key];
 	if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`"${key}" moet een getal zijn.`);
@@ -580,14 +575,7 @@ const zoomToLocation: UiTool<ZoomArgs> = {
 	},
 	describe: (args) => `Ga naar ${args.name ? `"${args.name}"` : `${args.lat.toFixed(4)}, ${args.lon.toFixed(4)}`}`,
 	execute: async (args, { map }) => {
-		const [w, s, e, n] = args.bbox ?? [
-			args.lon - POINT_MARGIN_DEGREES,
-			args.lat - POINT_MARGIN_DEGREES,
-			args.lon + POINT_MARGIN_DEGREES,
-			args.lat + POINT_MARGIN_DEGREES
-		];
-		const sphere = Cesium.BoundingSphere.fromRectangle3D(Cesium.Rectangle.fromDegrees(w, s, e, n));
-		map.flyTo(getCameraPositionFromBoundingSphere(sphere, get(map.options.use3DMode)));
+		zoomToBbox(map, args.bbox ?? [args.lon, args.lat, args.lon, args.lat]);
 		return `De kaart toont nu ${args.name ?? `${args.lat}, ${args.lon}`}.`;
 	}
 };

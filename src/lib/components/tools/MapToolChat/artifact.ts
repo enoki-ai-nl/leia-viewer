@@ -3,6 +3,15 @@
 
 export type Row = Record<string, unknown>;
 
+/* Context-sleutel van de functie die de kaart naar een bbox laat vliegen (gezet in ChatPanel). */
+export const ZOOM_CONTEXT = "chat-zoom-to-bbox";
+
+/* Per rij de bbox [west, zuid, oost, noord] van zijn geometrie, of null: sql_db_query geeft ze
+   mee voor een resultaat met een geometrie, zodat elke rij naar zijn plek kan zoomen. */
+export function artifactBboxes(content: any): ([number, number, number, number] | null)[] {
+	return Array.isArray(content?.bboxes) ? content.bboxes : [];
+}
+
 export function artifactRows(content: any): Row[] {
 	if (Array.isArray(content?.rows)) return content.rows;
 	if (Array.isArray(content?.features)) return content.features.map((f: any) => f.properties ?? {});

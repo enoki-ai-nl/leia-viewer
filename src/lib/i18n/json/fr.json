@@ -134,7 +134,8 @@
                 "noApiUrl": "L'URL du backend est inconnue.",
                 "notSignedIn": "Non connecté : aucune clé saisie.",
                 "unknownKey": "Cette clé est inconnue."
-            }
+            },
+            "zoomToRow": "Afficher sur la carte"
         },
         "info": {
             "label": "Information",
