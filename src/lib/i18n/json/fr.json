@@ -47,6 +47,7 @@
                 "set_layer_visibility": "Afficher ou masquer des couches",
                 "color_layer_by_property": "Colorer des couches selon une propriété",
                 "set_layer_style": "Définir les couleurs des couches",
+                "delete_dataset": "Supprimer des jeux de données",
                 "zoom_to_location": "Aller à un lieu",
                 "ask_clarifying_questions": "Poser des questions de suivi",
                 "remove_layer": "Supprimer des couches"
@@ -329,6 +330,10 @@
             "delete": "Supprimer",
             "colorRandomizer": "Couleur aléatoire",
             "allOther": "Tous les autres",
+            "deleteDataset": "Supprimer le jeu de données",
+            "deleteDatasetTitle": "Supprimer « {name} » ?",
+            "deleteDatasetBody": "Les données sont supprimées définitivement du serveur ; cette action est irréversible. Les couches créées à partir de celles-ci restent disponibles.",
+            "deleteDatasetConfirm": "Supprimer",
             "styleDefault": "Par défaut",
             "fillColor": "Remplissage",
             "strokeColor": "Contour",

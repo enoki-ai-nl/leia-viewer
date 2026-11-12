@@ -1,10 +1,11 @@
 <script lang="ts">
     import { getContext, onMount } from "svelte";
     import { _ } from "svelte-i18n";
-    import { Slider, Checkbox, Button, AccordionItem, Dropdown } from "carbon-components-svelte";
+    import { Slider, Checkbox, Button, AccordionItem, Dropdown, Modal } from "carbon-components-svelte";
 	import { Search, TrashCan } from "carbon-icons-svelte";
 
     import type { Layer } from "$lib/map-core/layer";
+    import { sessionLayer } from "$lib/map-core/session-layer";
     import { buildGetCapabilitiesUrl, fetchCapabilitiesDocument } from "$lib/components/tools/MapToolLayerLibrary/CustomLayers/capabilities";
     import ErrorMessage from "$lib/components/theme/ErrorMessage/ErrorMessage.svelte"
     import ExpandableDescription from "$lib/components/theme/ExpandableDescription/ExpandableDescription.svelte"
@@ -109,6 +110,26 @@
 
     function removeLayer() {
         layer.remove();
+    }
+
+    /* Een laag uit de sessie van de gebruiker (map-core/session-layer.ts) gaat nooit alleen van
+       de kaart: de prullenbak verwijdert de dataset voorgoed van de server, na bevestiging. */
+    const session = sessionLayer(layer.config);
+    let confirmDelete = false;
+    let deleting = false;
+    let deleteError = "";
+    async function deleteDataset() {
+        deleting = true;
+        deleteError = "";
+        try {
+            /* Haalt ook deze laag uit de bibliotheek: dit onderdeel verdwijnt daarna. */
+            await session!.delete(map.layerLibrary);
+            confirmDelete = false;
+        } catch (e) {
+            deleteError = e instanceof Error ? e.message : String(e);
+        } finally {
+            deleting = false;
+        }
     }
 
     function zoomToLayer() {
@@ -243,19 +264,42 @@
             <Button
                 kind="danger-tertiary"
                 size="small"
-                iconDescription={$_("tools.layerManager.delete")}
+                iconDescription={session ? $_("tools.layerManager.deleteDataset") : $_("tools.layerManager.delete")}
                 icon={TrashCan}
                 tooltipPosition="bottom"
                 tooltipAlignment="end"
                 on:click={() => {
-                    removeLayer();
+                    if (session) confirmDelete = true;
+                    else removeLayer();
                 }}
             />
         </div>
     </div>
 </AccordionItem>
 
+{#if confirmDelete}
+    <Modal
+        danger
+        open
+        size="xs"
+        modalHeading={$_("tools.layerManager.deleteDatasetTitle", { values: { name: layer.title } })}
+        primaryButtonText={$_("tools.layerManager.deleteDatasetConfirm")}
+        secondaryButtonText={$_("tools.chat.cancel")}
+        primaryButtonDisabled={deleting}
+        on:click:button--primary={deleteDataset}
+        on:click:button--secondary={() => (confirmDelete = false)}
+        on:close={() => (confirmDelete = false)}
+    >
+        <p>{$_("tools.layerManager.deleteDatasetBody")}</p>
+        {#if deleteError}<p class="delete-error">{deleteError}</p>{/if}
+    </Modal>
+{/if}
+
 <style>
+    .delete-error {
+        margin-top: 8px;
+        color: var(--cds-support-01, #da1e28);
+    }
     .panel {
         overflow: visible;
         width: 100%;

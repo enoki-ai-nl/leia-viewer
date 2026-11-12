@@ -8,8 +8,9 @@ import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
 import { findLayer, isStylable, labelLayers, layerProperties, newId } from "./layers";
 import { describeStyle, graduatedFromBreaks } from "./styles";
-import { fetchTileInfo } from "./tiles-api";
-import { datasetMvtConfig, GAIA_GROUP_ID } from "../GaiaLayers/gaia-layers";
+import { fetchTileInfo } from "./datasets-api";
+import { datasetConfigs, datasetMvtConfig, GAIA_GROUP_ID, GAIA_GROUP_TITLE, sessionLayerId } from "../GaiaLayers/gaia-layers";
+import { isSessionLayer, sessionLayer } from "$lib/map-core/session-layer";
 
 import type { Map } from "$lib/map-cesium/map";
 import { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
@@ -70,13 +71,17 @@ interface AddLayerArgs {
 	title?: string;
 }
 
+/* Een laag op de kaart. Een dataset uit de database hoort bij de "Ingeladen lagen" (zie
+   addDatasetLayer); een webservice (WFS/WMS) niet: die staat alleen op de kaart, zonder groep,
+   en de agent kan hem pas bevragen als hij hem met wfs_load_to_table inlaadt. */
 const addLayer: UiTool<AddLayerArgs> = {
 	name: "add_layer",
 	description:
-		"Add a layer to the user's map. service_type 'wfs' or 'wms': a web service; use its url and layer name " +
-		"exactly as the user gave them or as a dataset search returned them - never invent either. " +
-		"service_type 'dataset': one of the user's own datasets (layer_name is its table name from AVAILABLE DATASETS, " +
-		"or the table you just loaded); no url. Only call this when the user wants to see that data on the map.",
+		"Add a layer to the user's map. service_type 'wfs' or 'wms': a web service, only to look at - use its url and " +
+		"layer name exactly as the user gave them or as a dataset search returned them, never invent either; to " +
+		"query or analyse it, load it with wfs_load_to_table instead. service_type 'dataset': one of the user's own " +
+		"datasets (layer_name is its table name from AVAILABLE DATASETS, or the table you just loaded or created); " +
+		"no url. Only call this when the user wants to see that data on the map.",
 	defaultApproval: "ask",
 	parameters: () => ({
 		type: "object",
@@ -111,7 +116,7 @@ const addLayer: UiTool<AddLayerArgs> = {
 	},
 	describe: (args) =>
 		args.serviceType === "dataset"
-			? `Voeg de dataset "${args.title ?? args.layerName}" toe aan de kaart`
+			? `Toon de dataset "${args.title ?? args.layerName}" op de kaart`
 			: `Voeg de ${args.serviceType.toUpperCase()}-laag "${args.title ?? args.layerName}" toe aan de kaart`,
 	execute: async (args, context) => {
 		const { map } = context;
@@ -127,17 +132,20 @@ const addLayer: UiTool<AddLayerArgs> = {
 		});
 		if (existing) return `De laag "${existing.title}" staat al op de kaart.`;
 
-		const config = registerLayer(map, new LayerConfig({
+		/* Zonder groep: de bibliotheek zet hem bij de lagen zonder categorie, niet bij de
+		   "Ingeladen lagen" - hij staat niet in de database. */
+		const config = new LayerConfig({
 			id: newId(),
 			title: args.title ?? args.layerName,
 			type: args.serviceType,
-			groupId: GAIA_GROUP_ID,
 			defaultOn: true,
 			settings:
 				args.serviceType === "wfs"
 					? { url: args.url, featureType: args.layerName }
 					: { url: args.url, featureName: args.layerName }
-		}));
+		});
+		map.layerLibrary.addLayerConfig(config);
+		config.added.set(true);
 
 		/* De kaart meldt een mislukte laag zelf, maar zet dan alleen `added` terug. */
 		const layer = map.getLayerById(config.id);
@@ -145,42 +153,46 @@ const addLayer: UiTool<AddLayerArgs> = {
 			map.layerLibrary.removeLayerConfig(config);
 			throw new Error(`Kon de laag "${args.layerName}" niet toevoegen: de dienst reageert niet zoals verwacht of kent de laag niet.`);
 		}
-		return `${args.serviceType.toUpperCase()}-laag "${layer.title}" is aan de kaart toegevoegd.`;
+		return `${args.serviceType.toUpperCase()}-laag "${layer.title}" is aan de kaart toegevoegd. ` +
+			"Hij staat niet in de database: laad hem in met wfs_load_to_table om hem te bevragen.";
 	}
 };
 
-/* Zet een laagconfig in de bibliotheek (in een eigen groep) en voegt hem aan de kaart toe. */
-function registerLayer(map: Map, config: LayerConfig): LayerConfig {
-	const library = map.layerLibrary;
-	if (!library.findGroup(GAIA_GROUP_ID)) {
-		library.addLayerConfigGroup(new LayerConfigGroup(GAIA_GROUP_ID, "Door de assistent toegevoegd"));
-	}
-	library.addLayerConfig(config);
-	config.added.set(true);
-	return config;
-}
-
-/* Een dataset van de gebruiker als vector tiles (zie datasetMvtConfig). */
+/* Een dataset van de gebruiker op de kaart. Staat hij al in de lijst (verborgen), dan wordt
+   hij zichtbaar; anders komt hij erbij, onder dezelfde id als in de lijst, zodat hij er niet
+   twee keer in komt. Daarna vliegt de kaart ernaartoe. */
 async function addDatasetLayer(args: AddLayerArgs, context: UiToolContext): Promise<string> {
 	const { map } = context;
-	const existing = get(map.layers).find((layer) => layer.config.settings?.datasetId === args.layerName);
-	if (existing) return `De dataset staat al op de kaart als "${existing.title}".`;
+	const library = map.layerLibrary;
+	let config = datasetConfigs(library, args.layerName)[0];
 
-	const info = await fetchTileInfo(context, args.layerName);
-	const config = registerLayer(
-		map,
-		datasetMvtConfig(context, info, { id: newId(), groupId: GAIA_GROUP_ID, title: args.title, defaultOn: true })
-	);
+	let info: Awaited<ReturnType<typeof fetchTileInfo>> | undefined;
+	if (!config) {
+		info = await fetchTileInfo(context, args.layerName);
+		if (!library.findGroup(GAIA_GROUP_ID)) {
+			library.addLayerConfigGroup(new LayerConfigGroup(GAIA_GROUP_ID, GAIA_GROUP_TITLE));
+		}
+		config = datasetMvtConfig(context, info, {
+			id: sessionLayerId(info.id),
+			groupId: GAIA_GROUP_ID,
+			title: args.title,
+			defaultOn: true
+		});
+		library.addLayerConfig(config);
+	}
+	config.added.set(true);
 
 	const layer = map.getLayerById(config.id);
 	if (!(layer instanceof MvtLayer)) {
-		map.layerLibrary.removeLayerConfig(config);
-		throw new Error(`Kon de dataset "${args.layerName}" niet als laag toevoegen.`);
+		throw new Error(`Kon de dataset "${args.layerName}" niet als laag tonen.`);
 	}
+	layer.visible.set(true);
 	if (config.cameraPosition) map.flyTo(config.cameraPosition);
-	return `Dataset "${layer.title}" is aan de kaart toegevoegd (${info.feature_count} objecten). Eigenschappen om op te kleuren: ${
-		info.properties.slice(0, 15).map((p) => `${p.name} (${p.kind})`).join(", ")
-	}.`;
+	return `Dataset "${layer.title}" staat op de kaart.` + (info
+		? ` (${info.feature_count} objecten). Eigenschappen om op te kleuren: ${
+			info.properties.slice(0, 15).map((p) => `${p.name} (${p.kind})`).join(", ")
+		}.`
+		: "");
 }
 
 /* Alleen lagen met een bekende cameralocatie kunnen we aanvliegen - dezelfde regel
@@ -231,9 +243,12 @@ const setLayerVisibility: UiTool<SetVisibilityArgs> = {
 
 const removeLayer: UiTool<LayerRefArgs> = {
 	name: "remove_layer",
-	description: "Remove a layer from the map. Only when the user asks for it.",
+	description:
+		"Take a layer off the map. Only when the user asks for it. Not for the user's own datasets (they stay in the " +
+		"session: hide them with set_layer_visibility, or delete them for good with delete_dataset).",
 	defaultApproval: "ask",
-	eligibleLayers: (layers) => layers,
+	/* Een laag uit de sessie gaat nooit alleen van de kaart (map-core/session-layer.ts). */
+	eligibleLayers: (layers) => layers.filter(({ layer }) => !isSessionLayer(layer.config)),
 	parameters: layerRefParameters,
 	parse: parseLayerRef,
 	describe: (args) => `Verwijder de laag "${args.layerRef}" van de kaart`,
@@ -446,6 +461,32 @@ const setLayerStyle: UiTool<SetStyleArgs> = {
 			args.strokeColor ? `${kind === "line" ? "lijnkleur" : "omlijning"} ${args.strokeColor}` : ""
 		].filter(Boolean);
 		return `"${layer.title}" heeft nu ${parts.join(" en ")} voor alle objecten${notes.length ? ` (${notes.join("; ")})` : ""}.`;
+	}
+};
+
+/* --- delete_dataset -----------------------------------------------------------------
+   Een dataset van de gebruiker voorgoed van de server (werkitem #53). Loopt via de viewer, en
+   vraagt standaard om akkoord: verwijderen kan niet ongedaan. Afgeleide lagen die ervan gemaakt
+   zijn blijven bestaan (de server zet ze eerst om naar tabellen). */
+
+const deleteDatasetTool: UiTool<LayerRefArgs> = {
+	name: "delete_dataset",
+	description:
+		"Permanently delete one of the user's own datasets (a loaded or derived layer) from the server: the data is " +
+		"gone, this cannot be undone. Only when the user clearly asks to delete it. If they may only want it out of " +
+		"sight, hide it with set_layer_visibility; if unclear, ask first. Layers derived from this dataset stay available.",
+	defaultApproval: "ask",
+	eligibleLayers: (layers) => layers.filter(({ layer }) => isSessionLayer(layer.config)),
+	parameters: layerRefParameters,
+	parse: parseLayerRef,
+	describe: (args) => `Verwijder de dataset "${args.layerRef}" voorgoed van de server`,
+	execute: async (args, { map }) => {
+		const layer = findLayer(get(map.layers), args.layerRef);
+		const session = sessionLayer(layer.config);
+		if (!session) throw new Error(`"${layer.title}" is geen dataset van de gebruiker en kan niet verwijderd worden.`);
+		const converted = await session.delete(map.layerLibrary);
+		return `De dataset "${layer.title}" is van de server verwijderd.` +
+			(converted.length ? ` Deze lagen waren ervan gemaakt en blijven bestaan, nu als losse kopie: ${converted.join(", ")}.` : "");
 	}
 };
 
@@ -686,7 +727,7 @@ export const askClarifyingQuestions: UiTool<AskArgs> = {
 
 /* Op `UiTool<unknown>` gezet aan de rand van de lijst: aanroepers gaan altijd eerst
    langs tool.parse, en dat maakt het argumenttype betrouwbaar. */
-export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, setLayerStyle, removeLayer, zoomToLocation, askClarifyingQuestions] as unknown as UiTool<unknown>[];
+export const UI_TOOLS = [addLayer, flyTo, setLayerVisibility, colorLayerByProperty, setLayerStyle, removeLayer, deleteDatasetTool, zoomToLocation, askClarifyingQuestions] as unknown as UiTool<unknown>[];
 
 export function getUiTool(name: string): UiTool<unknown> | undefined {
 	return UI_TOOLS.find((tool) => tool.name === name);

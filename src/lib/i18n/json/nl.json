@@ -47,6 +47,7 @@
                 "set_layer_visibility": "Lagen tonen of verbergen",
                 "color_layer_by_property": "Lagen kleuren op basis van een eigenschap",
                 "set_layer_style": "De kleuren van lagen instellen",
+                "delete_dataset": "Datasets verwijderen",
                 "zoom_to_location": "Naar een plek gaan",
                 "ask_clarifying_questions": "Vervolgvragen stellen",
                 "remove_layer": "Lagen verwijderen"
@@ -338,6 +339,10 @@
             "delete": "Verwijderen",
             "colorRandomizer": "Kleur randomiseren",
             "allOther": "Alle overige",
+            "deleteDataset": "Dataset verwijderen",
+            "deleteDatasetTitle": "\"{name}\" verwijderen?",
+            "deleteDatasetBody": "Hiermee verdwijnt de data voorgoed van de server; dit kan niet ongedaan worden gemaakt. Lagen die ervan gemaakt zijn blijven bestaan.",
+            "deleteDatasetConfirm": "Verwijderen",
             "styleDefault": "Standaard",
             "fillColor": "Vulling",
             "strokeColor": "Omlijning",

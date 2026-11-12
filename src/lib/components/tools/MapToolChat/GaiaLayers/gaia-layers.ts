@@ -1,11 +1,13 @@
 import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
-import { fetchClasses, fetchTileInfo, authHeaders, type ApiContext, type TileInfo } from "../ui-tools/tiles-api";
+import { deleteDataset, fetchClasses, fetchTileInfo, authHeaders, type ApiContext, type TileInfo } from "../ui-tools/datasets-api";
 import { categoricalFromValues, graduatedFromBreaks } from "../ui-tools/styles";
 import { getUserKey } from "../user-key";
 
 import type { LayerLibrary } from "$lib/map-core/layer-library";
+import type { SessionLayer } from "$lib/map-core/session-layer";
+import { get } from "svelte/store";
 
 /* De datasets van Gaia als lagen in de laagbibliotheek: een groep met één laag per dataset
    van de ingelogde gebruiker, elk als vector tiles (MVT), zodat ook grote datasets snel zijn,
@@ -50,9 +52,39 @@ export function datasetMvtConfig(
 					? categoricalFromValues(property, classes.values.map((v) => v.value))
 					: graduatedFromBreaks(property, classes.breaks);
 			},
+			/* Een laag uit de sessie van de gebruiker (map-core/session-layer.ts): alleen tonen of
+			   verbergen, of voorgoed van de server verwijderen. */
+			session: {
+				datasetId: info.id,
+				delete: async (library: LayerLibrary) => {
+					const converted = await deleteDataset(api, info.id);
+					for (const config of datasetConfigs(library, info.id)) library.removeLayerConfig(config);
+					return converted;
+				}
+			} satisfies SessionLayer,
 			datasetId: info.id
 		}
 	});
+}
+
+/* De id van de laag van een dataset: dezelfde voor de lijst en voor add_layer, zodat een
+   dataset er nooit twee keer in staat. */
+export const sessionLayerId = (datasetId: string) => `gaia-${datasetId}`;
+
+/* Alle laagconfiguraties in de bibliotheek die deze dataset tonen: die onder "Ingeladen lagen"
+   en een die de assistent er los bij zette. */
+export function datasetConfigs(library: LayerLibrary, datasetId: string): LayerConfig[] {
+	const found: LayerConfig[] = [];
+	const walk = (groups: LayerConfigGroup[]) => {
+		for (const group of groups) {
+			for (const config of get(group.layerConfigs)) {
+				if (config.settings?.datasetId === datasetId) found.push(config);
+			}
+			walk(get(group.childGroups));
+		}
+	};
+	walk(get(library.groups));
+	return found;
 }
 
 const GEOMETRY_NAMES: Record<string, string> = {
@@ -101,7 +133,7 @@ export async function addGaiaLayers(library: LayerLibrary, apiUrl: string): Prom
 
 	if (!library.findGroup(GAIA_GROUP_ID)) library.addLayerConfigGroup(new LayerConfigGroup(GAIA_GROUP_ID, GAIA_GROUP_TITLE));
 	for (const { dataset, info } of available) {
-		const id = `gaia-${dataset.id}`;
+		const id = sessionLayerId(dataset.id);
 		if (library.findLayer(id)) continue;
 		const options = {
 			id,

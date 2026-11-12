@@ -1,7 +1,8 @@
 import type { MvtProperty } from "$lib/map-cesium/layers/mvt-layer";
 
-/* De tile-endpoints van de API waar de assistent mee praat (zie ApiContext). De tiles zelf
-   haalt MvtImageryProvider op, met de sleutel in de headers; hier staat al het andere. */
+/* De dataset-endpoints van de API waar de assistent mee praat (zie ApiContext): wat een laag van
+   een dataset nodig heeft (tileinfo, kleurklassen) en een dataset verwijderen. De tiles zelf
+   haalt MvtImageryProvider op, met de sleutel in de headers. */
 
 export interface ApiContext {
 	apiUrl: string;
@@ -50,4 +51,20 @@ export function fetchClasses(
 	const query = new URLSearchParams({ property, kind });
 	if (classes !== undefined) query.set("classes", String(classes));
 	return getJson<ClassesResponse>(api, `/datasets/${encodeURIComponent(datasetId)}/classes?${query}`);
+}
+
+/* Verwijdert een dataset van de gebruiker voorgoed van de server (werkitem #53). Afgeleide lagen
+   die ervan gemaakt zijn blijven bestaan (de server zet ze eerst om naar tabellen); hun namen
+   komen terug in `converted`. */
+export async function deleteDataset(api: ApiContext, datasetId: string): Promise<string[]> {
+	const response = await fetch(`${api.apiUrl}/delete/${encodeURIComponent(datasetId)}`, {
+		method: "DELETE",
+		headers: authHeaders(api)
+	});
+	if (!response.ok) {
+		const body = await response.json().catch(() => null);
+		throw new Error(typeof body?.detail === "string" ? body.detail : `Verwijderen mislukt: ${response.status}`);
+	}
+	const body = await response.json().catch(() => ({}));
+	return Array.isArray(body?.converted) ? body.converted : [];
 }

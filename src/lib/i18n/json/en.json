@@ -47,6 +47,7 @@
                 "set_layer_visibility": "Show or hide layers",
                 "color_layer_by_property": "Colour layers by a property",
                 "set_layer_style": "Set the colours of layers",
+                "delete_dataset": "Delete datasets",
                 "zoom_to_location": "Zoom to a place",
                 "ask_clarifying_questions": "Ask follow-up questions",
                 "remove_layer": "Remove layers"
@@ -331,6 +332,10 @@
             "delete": "Delete",
             "colorRandomizer": "Color randomizer",
             "allOther": "All other",
+            "deleteDataset": "Delete dataset",
+            "deleteDatasetTitle": "Delete \"{name}\"?",
+            "deleteDatasetBody": "This deletes the data from the server for good; it cannot be undone. Layers made from it stay available.",
+            "deleteDatasetConfirm": "Delete",
             "styleDefault": "Default",
             "fillColor": "Fill",
             "strokeColor": "Outline",
