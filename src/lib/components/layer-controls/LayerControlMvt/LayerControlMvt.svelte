@@ -51,6 +51,12 @@
 		if (style.kind === "categorical") {
 			return (style.categories ?? []).map(({ value, color }) => ({ label: value, color }));
 		}
+		if (style.kind === "rules") {
+			return [
+				...(style.rules ?? []).map(({ label, color }) => ({ label, color })),
+				{ label: $_("tools.layerManager.allOther"), color: style.fallbackColor }
+			];
+		}
 		const breaks = style.breaks ?? [];
 		return (style.colors ?? []).map((color, i) => ({
 			color,

@@ -29,6 +29,38 @@ const SEQUENTIAL_PALETTES: Record<string, string[]> = {
 };
 
 export const FALLBACK_COLOR = "#bdbdbd";
+
+// Hue (degrees), saturation and lightness (0-1) of a #rrggbb colour.
+function hsl(hex: string): [number, number, number] {
+	const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+	const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+	if (d === 0) return [0, 0, l];
+	const s = d / (1 - Math.abs(2 * l - 1));
+	const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+	return [(h * 60 + 360) % 360, s, l];
+}
+
+// Whether two colours would read as the same colour on the map: both clearly coloured and
+// of nearly the same hue (two blues), or close in plain RGB (two greys, two dark colours).
+export function colorsLookAlike(a: string, b: string): boolean {
+	const [ha, sa, la] = hsl(a), [hb, sb, lb] = hsl(b);
+	const vivid = (s: number, l: number) => s > 0.25 && l > 0.15 && l < 0.85;
+	if (vivid(sa, la) && vivid(sb, lb)) {
+		const dh = Math.abs(ha - hb);
+		return Math.min(dh, 360 - dh) < 30;
+	}
+	const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
+	const distance = Math.hypot(...[1, 3, 5].map((i) => channel(a, i) - channel(b, i)));
+	return distance < 80;
+}
+
+// The colour for what matches no rule: the one asked for, else the layer's own colour -
+// unless that looks like one of the rule colours, then grey, so the rules stay visible
+// ("the counts above 10 blue" on a layer that already is blue).
+export function otherRuleColor(own: string, ruleColors: string[], asked?: string): string {
+	if (asked) return asked;
+	return ruleColors.some((color) => colorsLookAlike(own, color)) ? FALLBACK_COLOR : own;
+}
 export const MAX_CATEGORIES = CATEGORICAL_PALETTE.length;
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -86,6 +118,9 @@ export function graduatedFromBreaks(property: string, breaks: number[], palette 
 export function describeStyle(style: DataDrivenStyle): string {
 	if (style.kind === "categorical") {
 		return (style.categories ?? []).map(({ value, color }) => `${value}: ${color}`).join("; ");
+	}
+	if (style.kind === "rules") {
+		return [...(style.rules ?? []).map(({ label, color }) => `${label}: ${color}`), `overige: ${style.fallbackColor}`].join("; ");
 	}
 	const breaks = style.breaks ?? [];
 	const round = (n: number) => Number(n.toPrecision(4));

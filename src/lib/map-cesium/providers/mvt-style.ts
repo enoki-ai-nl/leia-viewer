@@ -25,11 +25,58 @@ export interface LayerStyle {
    kiest de kleuren (zie MapToolChat/ui-tools/styles.ts). */
 export interface DataDrivenStyle {
 	property: string;
-	kind: "categorical" | "graduated";
+	kind: "categorical" | "graduated" | "rules";
 	categories?: { value: string; color: string }[]; // categorical: één kleur per waarde
 	breaks?: number[]; // graduated: ondergrens van elke klasse na de eerste, oplopend
 	colors?: string[]; // graduated: één kleur per klasse, dus breaks.length + 1
-	fallbackColor: string; // voor objecten zonder (bruikbare) waarde
+	rules?: ColorRule[]; // rules: de eerste die klopt geeft de kleur
+	fallbackColor: string; // voor objecten zonder (bruikbare) waarde, en bij rules: die geen regel raakt
+}
+
+/* Eén klasse met zijn eigen voorwaarde, zoals de gebruiker hem zei: "> 20", ">= 20", "< 5",
+   "= 3", "between 5 and 20" (grenzen doen mee). Zo kan een kleur nooit bij de verkeerde klasse
+   belanden, wat bij losse grenzen en kleuren in twee lijsten wel kon. */
+export interface ColorRule {
+	op: ">" | ">=" | "<" | "<=" | "=" | "between";
+	value: number;
+	to?: number; // alleen bij between
+	color: string;
+	label: string; // de voorwaarde, voor de legenda en het antwoord
+}
+
+const NUMBER = "(-?\\d+(?:[.,]\\d+)?)";
+const COMPARISON = new RegExp(`^(>=|<=|=>|=<|==|>|<|=)\\s*${NUMBER}$`);
+const BETWEEN = new RegExp(`^(?:between|tussen|entre)\\s+${NUMBER}\\s+(?:and|en|et)\\s+${NUMBER}$`, "i");
+const toNumber = (text: string) => Number(text.replace(",", "."));
+
+/* Een voorwaarde als tekst naar een regel; gooit met een uitleg als hij niet te lezen is. */
+export function parseCondition(condition: string, color: string): ColorRule {
+	const text = condition.trim().replace(/\s+/g, " ");
+	const between = BETWEEN.exec(text);
+	if (between) {
+		const [low, high] = [toNumber(between[1]), toNumber(between[2])].sort((a, b) => a - b);
+		return { op: "between", value: low, to: high, color, label: `${low} – ${high}` };
+	}
+	const comparison = COMPARISON.exec(text);
+	if (!comparison) {
+		throw new Error(
+			`De voorwaarde "${condition}" is niet te lezen. Gebruik bijvoorbeeld "> 20", ">= 20", "< 5", "= 3" of "between 5 and 20".`
+		);
+	}
+	const op = ({ "=>": ">=", "=<": "<=", "==": "=" } as Record<string, ColorRule["op"]>)[comparison[1]] ?? (comparison[1] as ColorRule["op"]);
+	const value = toNumber(comparison[2]);
+	return { op, value, color, label: `${op === ">=" ? "≥" : op === "<=" ? "≤" : op} ${value}` };
+}
+
+export function ruleMatches(rule: ColorRule, n: number): boolean {
+	switch (rule.op) {
+		case ">": return n > rule.value;
+		case ">=": return n >= rule.value;
+		case "<": return n < rule.value;
+		case "<=": return n <= rule.value;
+		case "=": return n === rule.value;
+		case "between": return n >= rule.value && n <= (rule.to ?? rule.value);
+	}
 }
 
 /* Dezelfde vier vul-/lijnkleurparen als de React-app voor een nieuwe laag
@@ -68,6 +115,11 @@ export function dataDrivenColor(style: DataDrivenStyle, properties: Record<strin
 	}
 
 	if (blank) return style.fallbackColor;
+	if (style.kind === "rules") {
+		const n = Number(value);
+		if (!Number.isFinite(n)) return style.fallbackColor;
+		return style.rules?.find((rule) => ruleMatches(rule, n))?.color ?? style.fallbackColor;
+	}
 	const colors = style.colors ?? [];
 	const number = Number(value);
 	const n = Number.isFinite(number) ? number : 0;

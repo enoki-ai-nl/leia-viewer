@@ -7,14 +7,14 @@ import { LayerConfig } from "$lib/map-core/layer-config";
 import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 
 import { findLayer, isStylable, labelLayers, layerProperties, newId } from "./layers";
-import { describeStyle, graduatedFromBreaks } from "./styles";
+import { describeStyle, otherRuleColor } from "./styles";
 import { fetchTileInfo } from "./datasets-api";
 import { datasetConfigs, datasetMvtConfig, GAIA_GROUP_ID, GAIA_GROUP_TITLE, sessionLayerId } from "../GaiaLayers/gaia-layers";
 import { isSessionLayer, sessionLayer } from "$lib/map-core/session-layer";
 
 import type { Map } from "$lib/map-cesium/map";
 import { MvtLayer } from "$lib/map-cesium/layers/mvt-layer";
-import type { DataDrivenStyle, LayerStyle } from "$lib/map-cesium/providers/mvt-style";
+import { parseCondition, type DataDrivenStyle, type LayerStyle } from "$lib/map-cesium/providers/mvt-style";
 import type { LabelledLayer } from "./layers";
 import type { UiTool, UiToolContext } from "./types";
 
@@ -261,43 +261,31 @@ const removeLayer: UiTool<LayerRefArgs> = {
 
 interface ColorByPropertyArgs extends LayerRefArgs {
 	property: string;
-	/* Eigen klassengrenzen (oplopend); zonder deze kiest de API ze. */
-	breaks?: number[];
-	/* Eén kleur per klasse (breaks.length + 1); null = de eigen kleur van de laag houden. */
-	colors?: (string | null)[];
+	/* Eigen klassen, elk met zijn voorwaarde ("> 20") en kleur; zonder deze kiest de API ze. */
+	rules?: { condition: string; color: string }[];
+	/* De omlijning van alle objecten, in dezelfde stap ("groen met een zwarte rand"). */
+	strokeColor?: string;
+	/* Bij rules: de kleur voor wat geen regel raakt ("de rest rood"). */
+	otherColor?: string;
 }
 
-const MAX_BREAKS = 6;
+const MAX_RULES = 6;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
-function parseBreaks(obj: Record<string, unknown>): Pick<ColorByPropertyArgs, "breaks" | "colors"> {
-	const rawBreaks = obj["breaks"];
-	const rawColors = obj["colors"];
-	if (rawBreaks === undefined || rawBreaks === null) {
-		if (rawColors !== undefined && rawColors !== null) throw new Error('"colors" gaat alleen samen met "breaks".');
-		return {};
+function parseRules(obj: Record<string, unknown>): ColorByPropertyArgs["rules"] {
+	const raw = obj["rules"];
+	if (raw === undefined || raw === null) return undefined;
+	if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_RULES) {
+		throw new Error(`"rules" moet een lijst van 1 tot ${MAX_RULES} regels zijn.`);
 	}
-	if (!Array.isArray(rawBreaks) || rawBreaks.length === 0 || rawBreaks.length > MAX_BREAKS) {
-		throw new Error(`"breaks" moet een lijst van 1 tot ${MAX_BREAKS} getallen zijn.`);
-	}
-	const breaks = rawBreaks.map((value) => (typeof value === "string" ? Number(value) : value));
-	if (!breaks.every((value): value is number => typeof value === "number" && Number.isFinite(value))) {
-		throw new Error('"breaks" mag alleen getallen bevatten.');
-	}
-	if (breaks.some((value, i) => i > 0 && value <= breaks[i - 1])) {
-		throw new Error('"breaks" moet strikt oplopend zijn.');
-	}
-	if (rawColors === undefined || rawColors === null) return { breaks };
-	if (!Array.isArray(rawColors) || rawColors.length !== breaks.length + 1) {
-		throw new Error(`"colors" moet precies ${breaks.length + 1} kleuren hebben: één per klasse, dus één meer dan "breaks".`);
-	}
-	const colors = rawColors.map((color) => {
-		if (color === null || color === "") return null;
-		if (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color)) {
-			throw new Error('Elke kleur in "colors" moet de vorm #rrggbb hebben, of null.');
-		}
-		return color;
+	return raw.map((item, i) => {
+		const entry = asObject(item);
+		const condition = requireString(entry, "condition");
+		const color = requireString(entry, "color");
+		if (!HEX_COLOR.test(color)) throw new Error(`De kleur van klasse ${i + 1} moet de vorm #rrggbb hebben.`);
+		parseCondition(condition, color);   // gooit met een uitleg als hij niet te lezen is
+		return { condition, color };
 	});
-	return { breaks, colors };
 }
 
 const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
@@ -305,13 +293,15 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 	description:
 		"Colour a layer's features by one of their properties, so features with different values get different " +
 		"colours (e.g. \"colour the areas by type\"). `property` must be one of the layer's properties as listed " +
-		"for that layer - never invent one. The app picks the colours, you cannot: a number property gets a " +
+		"for that layer - never invent one. Without `rules` the app picks the colours: a number property gets a " +
 		"gradient over its range, a text property one colour per value. Only some layers can be coloured this way.\n" +
-		"For a number property you can set the classes yourself with `breaks` (ascending class boundaries) and " +
-		"optionally `colors` (exactly one per class, so one more than breaks). A value equal to a break falls in " +
-		"the higher class. Use null in `colors` to keep the layer's own colour for that class. Example, \"colour the " +
-		"areas larger than 1000 red\": breaks [1000], colors [null, \"#ff0000\"]. Without `colors` the app picks a " +
-		"gradient. Features without a value keep the layer's own colour.",
+		"For a number property you can give the classes yourself in `rules`: each one a condition in the user's own " +
+		"terms and the colour for it. Conditions: \"> 20\", \">= 20\", \"< 5\", \"<= 5\", \"= 3\", \"between 5 and 20\" " +
+		"(both ends included). \"More than 20\" is \"> 20\", \"20 or more\" is \">= 20\". The first class whose condition " +
+		"holds gives the colour. Features that match no rule, or have no value, get `other_color` when the user names " +
+		"one (\"the rest red\"); otherwise they keep the layer's own colour, or grey when that looks like a rule colour. " +
+		"Example, \"colour the counts above 20 green with a black outline\": rules [{\"condition\": \"> 20\", " +
+		"\"color\": \"#00ff00\"}], stroke_color \"#000000\".",
 	defaultApproval: "auto",
 	eligibleLayers: (layers) => layers.filter(({ layer }) => isStylable(layer)),
 	parameters: (layers) => ({
@@ -319,28 +309,52 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 		properties: {
 			layer_ref: layerRefProperty(layers),
 			property: { type: "string", description: "The property whose values decide the colour." },
-			breaks: {
+			rules: {
 				type: "array",
-				items: { type: "number" },
-				description: `Optional, number properties only: ascending class boundaries (1 to ${MAX_BREAKS}). ` +
-					"Class 1 is below breaks[0]; each next class starts at its break."
+				maxItems: MAX_RULES,
+				items: {
+					type: "object",
+					properties: {
+						condition: { type: "string", description: "e.g. \"> 20\", \">= 20\", \"< 5\", \"between 5 and 20\"." },
+						color: { type: "string", description: "The colour for features meeting the condition, as #rrggbb." }
+					},
+					required: ["condition", "color"]
+				},
+				description: "Optional, number properties only: your own classes, each with its condition and colour."
 			},
-			colors: {
-				type: "array",
-				items: { type: ["string", "null"] },
-				description: "Optional, with breaks only: one #rrggbb colour per class (breaks.length + 1 entries), " +
-					"or null to keep the layer's own colour for that class."
+			other_color: {
+				type: "string",
+				description: "Optional, with rules only: the colour, as #rrggbb, for features that match no rule. " +
+					"Only when the user names one."
+			},
+			stroke_color: {
+				type: "string",
+				description: "Optional: the outline colour of all features (polygons and points), as #rrggbb."
 			}
 		},
 		required: ["layer_ref", "property"]
 	}),
 	parse: (raw) => {
 		const obj = asObject(raw);
-		return { layerRef: requireString(obj, "layer_ref"), property: requireString(obj, "property"), ...parseBreaks(obj) };
+		const strokeColor = optionalString(obj, "stroke_color");
+		if (strokeColor !== undefined && !HEX_COLOR.test(strokeColor)) throw new Error('"stroke_color" moet de vorm #rrggbb hebben.');
+		const rules = parseRules(obj);
+		const otherColor = optionalString(obj, "other_color");
+		if (otherColor !== undefined && !HEX_COLOR.test(otherColor)) throw new Error('"other_color" moet de vorm #rrggbb hebben.');
+		if (otherColor !== undefined && !rules) throw new Error('"other_color" hoort alleen bij "rules".');
+		return {
+			layerRef: requireString(obj, "layer_ref"),
+			property: requireString(obj, "property"),
+			rules,
+			strokeColor,
+			otherColor
+		};
 	},
 	describe: (args) =>
 		`Kleur de laag "${args.layerRef}" op basis van "${args.property}"` +
-		(args.breaks ? ` met grenzen ${args.breaks.join(", ")}` : ""),
+		(args.rules ? `: ${args.rules.map((c) => `${c.condition} ${c.color}`).join(", ")}` : "") +
+		(args.otherColor ? `, overige ${args.otherColor}` : "") +
+		(args.strokeColor ? `, omlijning ${args.strokeColor}` : ""),
 	execute: async (args, context) => {
 		const layer = findLayer(get(context.map.layers), args.layerRef);
 		if (!isStylable(layer)) {
@@ -355,28 +369,40 @@ const colorLayerByProperty: UiTool<ColorByPropertyArgs> = {
 				}.`
 			);
 		}
-		if (args.breaks) {
+
+		let style: DataDrivenStyle | undefined;
+		if (args.rules) {
 			if (property.kind !== "number") {
-				throw new Error(`"${property.name}" is geen getal; eigen grenzen ("breaks") gaan alleen bij getallen.`);
+				throw new Error(`"${property.name}" is geen getal; eigen klassen gaan alleen bij getallen.`);
 			}
-			/* De eigen kleur van de laag: vulling, of bij lijnen de lijnkleur. Die geldt voor de
-			   klassen met null, en voor objecten zonder waarde. */
+			/* Voor wat geen regel raakt of geen waarde heeft: de gevraagde kleur, anders de eigen
+			   kleur van de laag (vulling, of bij lijnen de lijnkleur), of grijs als die op een
+			   regelkleur lijkt. */
 			const base = get(layer.style);
-			const own = /LineString/.test(String(layer.config.settings["geometryType"] ?? "")) ? base.strokeColor : base.fillColor;
-			const ramp = graduatedFromBreaks(property.name, args.breaks);
-			const style: DataDrivenStyle = {
-				...ramp,
-				colors: args.colors ? args.colors.map((color) => color ?? own) : ramp.colors,
-				fallbackColor: own
+			const own = geometryKind(layer) === "line" ? base.strokeColor : base.fillColor;
+			style = {
+				property: property.name,
+				kind: "rules",
+				rules: args.rules.map((c) => parseCondition(c.condition, c.color)),
+				fallbackColor: otherRuleColor(own, args.rules.map((c) => c.color), args.otherColor)
 			};
 			layer.setDataDrivenStyle(style);
-			return `"${layer.title}" is gekleurd op "${property.name}" met eigen grenzen. ${describeStyle(style)}.`;
+		} else {
+			/* Een MVT-laag heeft de objecten niet in de browser (een tile bevat alleen wat in beeld
+			   is): de klassen komen van de API, want die ziet de hele dataset. */
+			style = await layer.colorBy(property.name);
 		}
 
-		/* Een MVT-laag heeft de objecten niet in de browser (een tile bevat alleen wat in beeld
-		   is): de klassen komen van de API, want die ziet de hele dataset. */
-		const style = await layer.colorBy(property.name);
-		return `"${layer.title}" is gekleurd op "${property.name}". ${style ? describeStyle(style) : ""}.`;
+		/* De omlijning in dezelfde stap; MvtLayer bouwt de laag daarna één keer opnieuw op. */
+		const kind = geometryKind(layer);
+		let outline = "";
+		if (args.strokeColor && kind !== "line") {
+			layer.setStyle(kind === "point" ? { pointStrokeColor: args.strokeColor } : { strokeColor: args.strokeColor });
+			outline = ` Omlijning: ${args.strokeColor}.`;
+		} else if (args.strokeColor) {
+			outline = " (stroke_color genegeerd: bij lijnen is de lijnkleur de kleuring zelf.)";
+		}
+		return `"${layer.title}" is gekleurd op "${property.name}". ${style ? describeStyle(style) : ""}.${outline}`;
 	}
 };
 
