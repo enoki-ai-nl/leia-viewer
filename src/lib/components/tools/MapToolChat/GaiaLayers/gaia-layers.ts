@@ -6,7 +6,7 @@ import { categoricalFromValues, graduatedFromBreaks } from "../ui-tools/styles";
 import { getUserKey } from "../user-key";
 
 import type { LayerLibrary } from "$lib/map-core/layer-library";
-import type { SessionLayer } from "$lib/map-core/session-layer";
+import { isSessionLayer, type SessionLayer } from "$lib/map-core/session-layer";
 import { get } from "svelte/store";
 
 /* De datasets van Gaia als lagen in de laagbibliotheek: een groep met één laag per dataset
@@ -73,12 +73,13 @@ export const sessionLayerId = (datasetId: string) => `gaia-${datasetId}`;
 
 /* Alle laagconfiguraties in de bibliotheek die deze dataset tonen: die onder "Ingeladen lagen"
    en een die de assistent er los bij zette. */
-export function datasetConfigs(library: LayerLibrary, datasetId: string): LayerConfig[] {
+export function datasetConfigs(library: LayerLibrary, datasetId?: string): LayerConfig[] {
 	const found: LayerConfig[] = [];
 	const walk = (groups: LayerConfigGroup[]) => {
 		for (const group of groups) {
 			for (const config of get(group.layerConfigs)) {
-				if (config.settings?.datasetId === datasetId) found.push(config);
+				const id = config.settings?.datasetId;
+				if (id !== undefined && (datasetId === undefined || id === datasetId)) found.push(config);
 			}
 			walk(get(group.childGroups));
 		}
@@ -110,9 +111,18 @@ export async function addGaiaLayers(library: LayerLibrary, apiUrl: string): Prom
 
 	const response = await fetch(`${apiUrl}/datasets`, { headers: authHeaders(api) });
 	if (!response.ok) throw new Error(`Datasets ophalen mislukt: ${response.status}`);
+	const all: DatasetSummary[] = (await response.json()).datasets ?? [];
+
+	/* Wat de server niet meer heeft (de agent verving een laag door een nieuwe met dezelfde
+	   naam): weg uit de lijst, anders blijft er een laag zonder data staan. */
+	const ids = new Set(all.map((dataset) => dataset.id));
+	for (const config of datasetConfigs(library)) {
+		if (isSessionLayer(config) && !ids.has(config.settings.datasetId)) library.removeLayerConfig(config);
+	}
+
 	/* Alleen wat nog niet in de bibliotheek staat: tileinfo telt de data, en dit wordt opnieuw
 	   aangeroepen als de agent een dataset heeft toegevoegd. */
-	const datasets: DatasetSummary[] = ((await response.json()).datasets ?? []).filter(
+	const datasets: DatasetSummary[] = all.filter(
 		(dataset: DatasetSummary) => !library.findLayer(`gaia-${dataset.id}`)
 	);
 
