@@ -9,6 +9,7 @@
 	import ChatHeader from "./ChatHeader.svelte";
 	import ChatInput from "./ChatInput.svelte";
 	import ExportDialog from "./ExportDialog.svelte";
+	import SensitiveDataWarning, { warningAccepted } from "./SensitiveDataWarning.svelte";
 	import UiToolSettings from "./ui-tools/UiToolSettings.svelte";
 	import { ZOOM_CONTEXT } from "./artifact";
 	import { zoomToBbox, type Bbox } from "./ui-tools/zoom";
@@ -56,30 +57,39 @@
 </script>
 
 <div class="chat-panel">
-	<ChatHeader
-		totalTokens={$totalTokens}
-		exportDisabled={exporting || !$userKey}
-		bind:settingsOpen
-		on:export={() => (exportDialogOpen = true)}
-	/>
+	<!-- Tot de waarschuwing over gevoelige gegevens is geaccepteerd, is de chat niet aan te
+	     klikken of met het toetsenbord te bereiken. `display: contents`: de wrapper verandert
+	     niets aan de flex-indeling van het paneel. -->
+	<div class="chat-panel__content" inert={!$warningAccepted}>
+		<ChatHeader
+			totalTokens={$totalTokens}
+			exportDisabled={exporting || !$userKey}
+			bind:settingsOpen
+			on:export={() => (exportDialogOpen = true)}
+		/>
 
-	{#if settingsOpen}
-		<UiToolSettings />
-	{/if}
-
-	<div bind:this={bodyEl} class="chat-panel__body">
-		{#each $events as event}
-			<ChatEvent {event} {session} />
-		{/each}
-
-		{#if $busy}
-			<div class="thinking" aria-label={$_("tools.chat.thinking")}>
-				<span></span><span></span><span></span>
-			</div>
+		{#if settingsOpen}
+			<UiToolSettings />
 		{/if}
+
+		<div bind:this={bodyEl} class="chat-panel__body">
+			{#each $events as event}
+				<ChatEvent {event} {session} />
+			{/each}
+
+			{#if $busy}
+				<div class="thinking" aria-label={$_("tools.chat.thinking")}>
+					<span></span><span></span><span></span>
+				</div>
+			{/if}
+		</div>
+
+		<ChatInput busy={$busy} on:submit={(event) => session.ask(event.detail)} on:stop={session.stop} />
 	</div>
 
-	<ChatInput busy={$busy} on:submit={(event) => session.ask(event.detail)} on:stop={session.stop} />
+	{#if !$warningAccepted}
+		<SensitiveDataWarning />
+	{/if}
 
 	{#if exportDialogOpen}
 		<ExportDialog on:confirm={exportConversation} on:cancel={() => (exportDialogOpen = false)} />
@@ -93,6 +103,10 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+
+	.chat-panel__content {
+		display: contents;
 	}
 
 	.chat-panel__body {

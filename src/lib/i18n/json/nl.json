@@ -33,6 +33,11 @@
             "search": "Zoek Locatie"
         },
         "chat": {
+            "sensitiveDataWarning": {
+                "title": "Deel geen gevoelige gegevens",
+                "text": "Je berichten worden naar een AI-agent gestuurd. Voer geen persoonsgegevens, wachtwoorden of andere vertrouwelijke informatie in.",
+                "accept": "Ik begrijp het"
+            },
             "label": "Chat",
             "title": "AI-agent",
             "modelVia": "{model} via {provider}",

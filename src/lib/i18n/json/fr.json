@@ -33,6 +33,11 @@
             "search": "Rechercher emplacement"
         },
         "chat": {
+            "sensitiveDataWarning": {
+                "title": "Ne partagez pas de données sensibles",
+                "text": "Vos messages sont envoyés à un agent d’IA. Ne saisissez pas de données personnelles, de mots de passe ni d’autres informations confidentielles.",
+                "accept": "J’ai compris"
+            },
             "label": "Chat",
             "title": "Agent IA",
             "modelVia": "{model} via {provider}",

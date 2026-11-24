@@ -33,6 +33,11 @@
             "search": "Search Location"
         },
         "chat": {
+            "sensitiveDataWarning": {
+                "title": "Do not share sensitive data",
+                "text": "Your messages are sent to an AI agent. Do not enter personal data, passwords or other confidential information.",
+                "accept": "I understand"
+            },
             "label": "Chat",
             "title": "AI agent",
             "modelVia": "{model} via {provider}",
