@@ -11,12 +11,20 @@ export default defineConfig(({ command, mode }) => {
   process.env = {...process.env, ...loadEnv(mode, process.cwd(), '')};
   const cesiumBaseUrl = `${process.env.APP_URL}/Cesium`
 
+  // The variables the browser code reads as process.env.X. Only these go into the bundle:
+  // the whole process.env would publish every variable of the build machine (CI tokens,
+  // credentials) in the site's JavaScript.
+  const exposed = ["APP_URL", "CONFIG_URL", "CONFIG_SERVER_URL", "NODE_ENV"];
+  const browserEnv = Object.fromEntries(
+    exposed.filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])
+  );
+
   return {
       define: {
         // This is the base url for static files that CesiumJS needs to load.
         // Set to an empty string to place the files at the site's root path
         CESIUM_BASE_URL: JSON.stringify(cesiumBaseUrl),
-        "process.env": process.env
+        "process.env": JSON.stringify(browserEnv)
       },
       plugins: [
         sveltekit(),
