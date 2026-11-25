@@ -64,6 +64,7 @@
             "placeholder": "Stel een vraag",
             "send": "Verstuur vraag",
             "thinking": "Bezig met nadenken",
+            "slow": "Het model denkt wat langer na…",
             "choice": {
                 "recommended": "Aanbevolen",
                 "because": "Aanbevolen omdat: {reason}",
@@ -136,6 +137,7 @@
             },
             "errors": {
                 "noConnection": "Geen verbinding met de assistent.",
+                "runCutOff": "Antwoorden duurde te lang en is daarom afgebroken. Herformuleer je vraag, en stel deze opnieuw.",
                 "noApiUrl": "De backend-URL is niet bekend.",
                 "notSignedIn": "Niet ingelogd: er is geen sleutel ingevuld.",
                 "unknownKey": "Deze sleutel is niet bekend."

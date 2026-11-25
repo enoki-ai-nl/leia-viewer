@@ -32,6 +32,8 @@ export interface ChatSession {
 	events: Readable<ChatEvent[]>;
 	/* De agent is aan het denken. */
 	busy: Readable<boolean>;
+	/* Er kwam een tijd niets binnen (zie SLOW_AFTER_MS): het model denkt wat langer na. */
+	slow: Readable<boolean>;
 	/* Het verbruik over het hele gesprek. */
 	totalTokens: Readable<number>;
 	/* De sleutel van de ingelogde gebruiker; leeg tot de eerste vraag erom vraagt. */
@@ -51,6 +53,7 @@ export interface ChatSession {
 export function createChatSession(getMap: () => Map | undefined): ChatSession {
 	const events = writable<ChatEvent[]>([]);
 	const busy = writable(false);
+	const slow = writable(false);
 	const totalTokens = writable(0);
 	const userKey = writable("");
 
@@ -70,6 +73,25 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 
 	/* Breekt de lopende vraag af (zie stop); undefined als er geen loopt. */
 	let runAbort: AbortController | undefined;
+	/* Of er in de lopende run al een event binnenkwam. Zo ja en de run mislukt toch, dan
+	   was er wél verbinding en is hij onderweg afgebroken (bijv. de timeout van nginx). */
+	let received = false;
+
+	/* Zoveel ms zonder event, dan verschijnt de wachtmelding. */
+	const SLOW_AFTER_MS = 15_000; // in miliseconden
+	let slowTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/* Bij elk event opnieuw beginnen: de melding komt pas na SLOW_AFTER_MS stilte. */
+	function restartSlowTimer() {
+		slow.set(false);
+		clearTimeout(slowTimer)
+		slowTimer = setTimeout(() => slow.set(true), SLOW_AFTER_MS);
+	}
+
+	function stopSlowTimer() {
+		clearTimeout(slowTimer);
+		slow.set(false);
+	}
 	/* Afbreken eindigt de run met een fout; die heeft de gebruiker zelf veroorzaakt. */
 	const stopped = () => runAbort?.signal.aborted ?? false;
 
@@ -193,6 +215,12 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 
 	/* De AG-UI-events vertaald naar wat het paneel toont. */
 	const subscriber: AgentSubscriber = {
+		/* Elk binnenkomend event, van welk type ook. */
+		onEvent: () => {
+			received = true;
+			restartSlowTimer();
+		},
+
 		onTextMessageEndEvent: ({ textMessageBuffer }) => {
 			if (textMessageBuffer.trim()) push({ type: "answer", markdown: textMessageBuffer });
 		},
@@ -232,7 +260,8 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 		onRunFailed: ({ error }) => {
 			if (stopped()) return;
 			console.error("Agent-run mislukt:", error);
-			push({ type: "error", error: get(_)("tools.chat.errors.noConnection") });
+			const key = received ? "tools.chat.errors.runCutOff" : "tools.chat.errors.noConnection";
+			push({ type: "error", error: get(_)(key) });
 		}
 	};
 
@@ -295,6 +324,8 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 
 			/* De backend raadt de taal niet zelf, maar volgt de interface ("nl-NL" -> "nl"). */
 			const language = get(locale)?.split("-")[0] ?? "en";
+			received = false;
+			restartSlowTimer();
 			await agent
 				.runAgent({ tools: toAgUiTools(map), forwardedProps: { language }, abortController: abort }, subscriber)
 				.catch(() => {
@@ -313,6 +344,7 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 			push({ type: "error", error: errorText(error) });
 		} finally {
 			runAbort = undefined;
+			stopSlowTimer();
 			busy.set(false);
 		}
 	}
@@ -331,6 +363,7 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 	return {
 		events,
 		busy,
+		slow,
 		totalTokens,
 		userKey,
 		ask,

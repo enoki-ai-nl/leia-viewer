@@ -18,7 +18,7 @@
 
 	/* Het gesprek zelf (agent, instructies, tokens) zit in de sessie; dit paneel toont het. */
 	const session = createChatSession(() => map);
-	const { events, busy, totalTokens, userKey } = session;
+	const { events, busy, slow, totalTokens, userKey } = session;
 
 	/* Een regel van een zoekresultaat met een geometrie zoomt de kaart naar die plek (ResultTable). */
 	setContext(ZOOM_CONTEXT, (bbox: Bbox) => {
@@ -80,6 +80,7 @@
 			{#if $busy}
 				<div class="thinking" aria-label={$_("tools.chat.thinking")}>
 					<span></span><span></span><span></span>
+					{#if $slow}<em class="thinking__slow" aria-live="polite">{$_("tools.chat.slow")}</em>{/if}
 				</div>
 			{/if}
 		</div>
@@ -129,6 +130,12 @@
 		padding: 0.5rem 0.75rem;
 		background: var(--cds-field-01, #ffffff);
 		border: 1px solid var(--cds-ui-03, #e0e0e0);
+	}
+
+	.thinking__slow {
+		margin-left: 0.5rem;
+		color: var(--cds-text-02, #525252);
+		font-size: 0.75rem;
 	}
 
 	.thinking span {

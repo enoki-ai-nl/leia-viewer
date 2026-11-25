@@ -64,6 +64,7 @@
             "placeholder": "Posez une question",
             "send": "Envoyer la question",
             "thinking": "Réflexion en cours",
+            "slow": "Le modèle réfléchit un peu plus longtemps…",
             "choice": {
                 "recommended": "Recommandé",
                 "because": "Recommandé parce que : {reason}",
@@ -136,6 +137,7 @@
             },
             "errors": {
                 "noConnection": "Pas de connexion avec l'assistant.",
+                "runCutOff": "La réponse a pris trop de temps et a été interrompue. Reformulez votre question et posez-la à nouveau.",
                 "noApiUrl": "L'URL du backend est inconnue.",
                 "notSignedIn": "Non connecté : aucune clé saisie.",
                 "unknownKey": "Cette clé est inconnue."

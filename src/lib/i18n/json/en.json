@@ -64,6 +64,7 @@
             "placeholder": "Ask a question",
             "send": "Send question",
             "thinking": "Thinking",
+            "slow": "The model is taking a little longer to think…",
             "choice": {
                 "recommended": "Recommended",
                 "because": "Recommended because: {reason}",
@@ -136,6 +137,7 @@
             },
             "errors": {
                 "noConnection": "No connection to the assistant.",
+                "runCutOff": "Answering took too long and was cut off. Try again, and formulate your question differently.",
                 "noApiUrl": "The backend URL is unknown.",
                 "notSignedIn": "Not signed in: no key was entered.",
                 "unknownKey": "This key is not known."
