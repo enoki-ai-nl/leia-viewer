@@ -78,7 +78,7 @@ const addLayer: UiTool<AddLayerArgs> = {
 		"Add a layer to the user's map; the map zooms to it. service_type 'wfs' or 'wms': a web service, only to look at - use its url and " +
 		"layer name exactly as the user gave them or as a dataset search returned them, never invent either; to " +
 		"query or analyse it, load it with wfs_load_to_table instead. service_type 'dataset': one of the user's own " +
-		"datasets (layer_name is its table name from AVAILABLE DATASETS, or the table you just loaded or created); " +
+		"datasets (layer_name is its table name from list_datasets, or the table you just loaded or created); " +
 		"no url. Only call this when the user wants to see that data on the map.",
 	defaultApproval: "ask",
 	parameters: () => ({
