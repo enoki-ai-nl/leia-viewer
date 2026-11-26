@@ -195,11 +195,15 @@
                     {layer.title}
                 </div>
             </div>
+            <!-- Iets naast de titel, bijv. het label van een afgeleide laag (GaiaLayerItem). -->
+            <slot name="badge" />
             <MetadataLink url={metadataUrl} />
         </div>
     </svelte:fragment>
 
     <div class="panel" class:panel-active={active}>
+        <!-- Bovenaan het paneel, bijv. de herkomst van een afgeleide laag (GaiaLayerItem). -->
+        <slot name="details" />
         {#if $customControls}
             {#each $customControls as control}
                 <svelte:component this={control.component} {...control.props} />

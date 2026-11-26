@@ -4,10 +4,11 @@ import { LayerConfigGroup } from "$lib/map-core/layer-config-group";
 import { deleteDataset, fetchClasses, fetchTileInfo, authHeaders, type ApiContext, type TileInfo } from "../ui-tools/datasets-api";
 import { categoricalFromValues, graduatedFromBreaks } from "../ui-tools/styles";
 import { getUserKey } from "../user-key";
+import { datasetsChanged } from "../chat-store";
 
 import type { LayerLibrary } from "$lib/map-core/layer-library";
 import { isSessionLayer, type SessionLayer } from "$lib/map-core/session-layer";
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 
 /* De datasets van Gaia als lagen in de laagbibliotheek: een groep met één laag per dataset
    van de ingelogde gebruiker, elk als vector tiles (MVT), zodat ook grote datasets snel zijn,
@@ -16,11 +17,79 @@ import { get } from "svelte/store";
 export const GAIA_GROUP_ID = "gaia-datasets";
 export const GAIA_GROUP_TITLE = "AI lagen";
 
-interface DatasetSummary {
+export interface DatasetSummary {
 	id: string;
 	display_name: string | null;
 	original_filename: string;
 	z: number;
+	metadata?: DatasetMeta | null;
+}
+
+/* Wat de backend in `meta` over de herkomst van een dataset bewaart. */
+interface DatasetMeta {
+	/* Een afgeleide laag (backend services/sql/derived.py): zijn bronnen, elk met de naam die
+	   ze hadden toen hij gemaakt werd (werkitem #69; ontbreekt bij lagen van daarvoor), en
+	   wanneer hij een tabel werd omdat een bron verdween (#53). */
+	derived?: { sources?: { id: string; name: string }[]; materialized_at?: string };
+	/* Een laag die de agent uit een WFS-dienst laadde. */
+	wfs_source?: { url: string; type_name: string };
+}
+
+/* De datasets van de gebruiker zoals de server ze het laatst gaf: daaruit volgt de herkomst
+   van een laag, ook van een bron die intussen verwijderd is. */
+export const gaiaDatasets = writable<DatasetSummary[]>([]);
+
+/* Waar een laag vandaan komt (werkitem #69). Een boom, geen keten: een afgeleide laag kan
+   meer bronnen hebben, en een bron kan zelf weer afgeleid zijn. */
+export interface Origin {
+	name: string;
+	kind: "derived" | "wfs" | "upload" | "deleted";
+	/* "derived": een tabel geworden omdat een bron verdween; volgt zijn bronnen niet meer. */
+	frozen?: boolean;
+	/* "wfs": de server van de dienst. */
+	host?: string;
+	/* "derived": undefined bij een laag van vóór #69, waarvan de bronnen niet bekend zijn. */
+	sources?: Origin[];
+}
+
+/* De herkomst van een dataset. `name` is de naam die een afgeleide laag van deze bron
+   bewaarde: het enige wat er nog van over is als de bron verwijderd is. */
+export function origin(datasetId: string, datasets: DatasetSummary[], name = datasetId): Origin {
+	const dataset = datasets.find((candidate) => candidate.id === datasetId);
+	if (!dataset) return { name, kind: "deleted" };
+	const title = dataset.display_name ?? dataset.original_filename;
+	const meta: DatasetMeta = dataset.metadata ?? {};
+	if (meta.derived) {
+		return {
+			name: title,
+			kind: "derived",
+			frozen: meta.derived.materialized_at !== undefined,
+			sources: meta.derived.sources?.map((source) => origin(source.id, datasets, source.name))
+		};
+	}
+	if (meta.wfs_source) return { name: title, kind: "wfs", host: hostOf(meta.wfs_source.url) };
+	return { name: title, kind: "upload" };
+}
+
+/* De bronnen onder een laag als regels met hun diepte (1 = directe bron), voor de weergave. */
+export function originLines(root: Origin): { depth: number; origin: Origin }[] {
+	const lines: { depth: number; origin: Origin }[] = [];
+	const walk = (node: Origin, depth: number) => {
+		for (const source of node.sources ?? []) {
+			lines.push({ depth, origin: source });
+			walk(source, depth + 1);
+		}
+	};
+	walk(root, 1);
+	return lines;
+}
+
+function hostOf(url: string): string | undefined {
+	try {
+		return new URL(url).host;
+	} catch {
+		return undefined;
+	}
 }
 
 /* De laagconfiguratie voor een dataset: vector tiles van de API, getekend door MvtLayer
@@ -59,6 +128,9 @@ export function datasetMvtConfig(
 				delete: async (library: LayerLibrary) => {
 					const converted = await deleteDataset(api, info.id);
 					for (const config of datasetConfigs(library, info.id)) library.removeLayerConfig(config);
+					/* De lijst opnieuw ophalen: lagen die van deze dataset gemaakt waren, zijn nu
+					   vastgezet, en hun herkomst toont de bron als verwijderd. */
+					datasetsChanged.update((n) => n + 1);
 					return converted;
 				}
 			} satisfies SessionLayer,
@@ -112,6 +184,7 @@ export async function addGaiaLayers(library: LayerLibrary, apiUrl: string): Prom
 	const response = await fetch(`${apiUrl}/datasets`, { headers: authHeaders(api) });
 	if (!response.ok) throw new Error(`Datasets ophalen mislukt: ${response.status}`);
 	const all: DatasetSummary[] = (await response.json()).datasets ?? [];
+	gaiaDatasets.set(all);
 
 	/* Wat de server niet meer heeft (de agent verving een laag door een nieuwe met dezelfde
 	   naam): weg uit de lijst, anders blijft er een laag zonder data staan. */

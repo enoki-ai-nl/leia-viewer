@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Accordion } from "carbon-components-svelte";
 
-	import LayerControl from "../../MapToolLayerManager/MapToolLayerControl.svelte";
+	import GaiaLayerItem from "./GaiaLayerItem.svelte";
 	import { _ } from "svelte-i18n";
 
 	import { GAIA_GROUP_ID } from "./gaia-layers";
@@ -31,7 +31,7 @@
 			{#each $configs as config (config.id)}
 				{@const layer = layers.find((candidate) => candidate.config === config)}
 				{#if layer}
-					<LayerControl {layer} />
+					<GaiaLayerItem {layer} />
 				{/if}
 			{/each}
 		{:else}
