@@ -3,16 +3,25 @@
 
 import type { ChatEvent } from "./chat-types";
 import type { Bbox } from "./ui-tools/zoom";
+import type { Shape } from "./result-highlight";
 
 export type Row = Record<string, unknown>;
 
-/* Context-sleutel van de functie die de kaart naar een bbox laat vliegen (gezet in ChatPanel). */
-export const ZOOM_CONTEXT = "chat-zoom-to-bbox";
+/* Context-sleutel van de functie die de kaart naar een bbox laat vliegen en de vormen daar
+   markeert (gezet in ChatPanel). Zonder vormen zoomt hij alleen. */
+export const ZOOM_AND_HIGHLIGHT_CONTEXT = "chat-zoom-to-and-highlight";
+export type ZoomToAndHighlight = (bbox: Bbox, shapes?: (Shape | null)[]) => void;
 
 /* Per rij de bbox [west, zuid, oost, noord] van zijn geometrie, of null: sql_db_query geeft ze
    mee voor een resultaat met een geometrie, zodat elke rij naar zijn plek kan zoomen. */
 export function artifactBboxes(content: any): (Bbox | null)[] {
 	return Array.isArray(content?.bboxes) ? content.bboxes : [];
+}
+
+/* Per rij zijn geometrie als GeoJSON (WGS84, vereenvoudigd) om te markeren, of null; allemaal
+   null als ze samen te groot waren om mee te sturen. Leeg in oudere gesprekken. */
+export function artifactShapes(content: any): (Shape | null)[] {
+	return Array.isArray(content?.shapes) ? content.shapes : [];
 }
 
 export function artifactRows(content: any): Row[] {
@@ -50,6 +59,7 @@ export function argsPreview(args: unknown): string {
 export interface ZoomTarget {
 	rows: Row[];
 	bboxes: (Bbox | null)[];
+	shapes: (Shape | null)[];
 	bbox: Bbox;
 	count: number;
 }
@@ -73,7 +83,7 @@ export function unionBbox(bboxes: (Bbox | null)[]): Bbox | null {
 export function zoomTargets(events: ChatEvent[], busy: boolean): Record<number, ZoomTarget> {
 	const targets: Record<number, ZoomTarget> = {};
 	let lastAnswer = -1;
-	let result: { rows: Row[]; bboxes: (Bbox | null)[] } | null = null;
+	let result: { rows: Row[]; bboxes: (Bbox | null)[]; shapes: (Shape | null)[] } | null = null;
 
 	const close = () => {
 		const bbox = result ? unionBbox(result.bboxes) : null;
@@ -88,7 +98,8 @@ export function zoomTargets(events: ChatEvent[], busy: boolean): Record<number, 
 		else if (event.type === "answer") lastAnswer = i;
 		else if (event.type === "tool" && event.tool === "sql_db_query" && event.status === "done") {
 			const bboxes = artifactBboxes(event.content);
-			if (bboxes.some(Boolean)) result = { rows: artifactRows(event.content), bboxes };
+			if (bboxes.some(Boolean))
+				result = { rows: artifactRows(event.content), bboxes, shapes: artifactShapes(event.content) };
 		}
 	});
 	if (!busy) close();

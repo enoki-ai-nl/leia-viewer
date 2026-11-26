@@ -3,24 +3,36 @@
 	import { _ } from "svelte-i18n";
 	import Location from "carbon-icons-svelte/lib/Location.svelte";
 
-	import { formatCell, ZOOM_CONTEXT, type ZoomTarget } from "./artifact";
+	import {
+		formatCell,
+		ZOOM_AND_HIGHLIGHT_CONTEXT,
+		type ZoomTarget,
+		type ZoomToAndHighlight
+	} from "./artifact";
+	import type { Shape } from "./result-highlight";
 	import type { Bbox } from "./ui-tools/zoom";
 
-	/* Onder een antwoord over plekken: een knop die de kaart naar al die plekken laat vliegen,
-	   en bij een kort resultaat ook een knop per plek. Zie zoomTargets in artifact.ts. */
+	/* Onder een antwoord over plekken: een knop die de kaart naar al die plekken laat vliegen
+	   en ze markeert, en bij een kort resultaat ook een knop per plek. Zie zoomTargets in
+	   artifact.ts. */
 	export let target: ZoomTarget;
 
 	/* Tot zoveel rijen krijgt elke rij hier ook een eigen knop; daarboven staan ze alleen in
 	   de (ingeklapte) tussenstap van de query, en biedt het antwoord alleen "alles" aan. */
 	const MAX_INLINE_ROWS = 5;
 
-	const zoomTo = getContext<((bbox: Bbox) => void) | undefined>(ZOOM_CONTEXT);
+	const zoomToAndHighlight = getContext<ZoomToAndHighlight | undefined>(
+		ZOOM_AND_HIGHLIGHT_CONTEXT
+	);
 
 	$: inline =
 		target.count > 1 && target.count <= MAX_INLINE_ROWS
 			? target.rows
-					.map((row, i) => ({ row, bbox: target.bboxes[i] }))
-					.filter((item): item is { row: typeof item.row; bbox: Bbox } => item.bbox !== null)
+					.map((row, i) => ({ row, bbox: target.bboxes[i], shape: target.shapes[i] ?? null }))
+					.filter(
+						(item): item is { row: typeof item.row; bbox: Bbox; shape: Shape | null } =>
+							item.bbox !== null
+					)
 			: [];
 
 	const rowLabel = (row: Record<string, unknown>) =>
@@ -29,18 +41,22 @@
 			.join(", ");
 </script>
 
-{#if zoomTo}
+{#if zoomToAndHighlight}
 	<div class="result-zoom">
-		<button type="button" class="result-zoom__all" on:click={() => zoomTo?.(target.bbox)}>
+		<button
+			type="button"
+			class="result-zoom__all"
+			on:click={() => zoomToAndHighlight?.(target.bbox, target.shapes)}
+		>
 			<Location size={16} />
 			{$_("tools.chat.zoomToResults", { values: { count: target.count } })}
 		</button>
-		{#each inline as { row, bbox }}
+		{#each inline as { row, bbox, shape }}
 			<button
 				type="button"
 				class="result-zoom__row"
 				title={$_("tools.chat.zoomToRow")}
-				on:click={() => zoomTo?.(bbox)}
+				on:click={() => zoomToAndHighlight?.(bbox, [shape])}
 			>
 				<Location size={16} />
 				<span>{rowLabel(row)}</span>

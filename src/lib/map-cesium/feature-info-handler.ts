@@ -4,6 +4,7 @@ import { FeatureInfo } from "$lib/map-core/feature-info/feature-info";
 import { FeatureInfoRequestOptions } from "$lib/map-core/feature-info/feature-info-request-options";
 import { FeatureInfoRecord } from "$lib/map-core/feature-info/feature-info-record";
 import { MvtLayer } from "./layers/mvt-layer";
+import { isClickThrough } from "./click-through";
 import { get } from "svelte/store";
 
 
@@ -34,7 +35,7 @@ export class FeatureInfoHandler {
         const fiList = new Array<FeatureInfo>()
 
         const location = new Cesium.Cartesian2(options.location[0], options.location[1]);
-        const picked = this.map.viewer.scene.pick(location);
+        const picked = this.pickThroughOverlays(location);
         let info: FeatureInfo | undefined = undefined;
 
         // First check if primitive is clicked
@@ -52,6 +53,15 @@ export class FeatureInfoHandler {
         }
 
         return fiList;
+    }
+
+    /* Het bovenste object onder de klik, maar door een doorklikbare markering heen (zie
+       click-through.ts). drillPick alleen als die er ligt: het is duurder dan pick. Niets
+       eronder: undefined, dan komen de afbeeldingslagen (MVT, WMS) aan de beurt. */
+    private pickThroughOverlays(location: Cesium.Cartesian2): any {
+        const picked = this.map.viewer.scene.pick(location);
+        if (!isClickThrough(picked)) return picked;
+        return this.map.viewer.scene.drillPick(location, 10).find((hit) => !isClickThrough(hit));
     }
 
     /* Een MVT-laag tekent zijn markering zelf (als aparte afbeeldingslaag): hier alleen wissen

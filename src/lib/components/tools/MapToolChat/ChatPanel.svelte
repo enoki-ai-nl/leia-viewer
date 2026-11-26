@@ -12,8 +12,9 @@
 	import SensitiveDataWarning, { warningAccepted } from "./SensitiveDataWarning.svelte";
 	import UiToolSettings from "./ui-tools/UiToolSettings.svelte";
 	import ResultZoom from "./ResultZoom.svelte";
-	import { ZOOM_CONTEXT, zoomTargets } from "./artifact";
-	import { zoomToBbox, type Bbox } from "./ui-tools/zoom";
+	import { ZOOM_AND_HIGHLIGHT_CONTEXT, zoomTargets, type ZoomToAndHighlight } from "./artifact";
+	import { clearHighlight, highlightShapes } from "./result-highlight";
+	import { zoomToBbox } from "./ui-tools/zoom";
 
 	export let map: Map | undefined;
 
@@ -21,10 +22,19 @@
 	const session = createChatSession(() => map);
 	const { events, busy, slow, totalTokens, userKey } = session;
 
-	/* Een regel van een zoekresultaat met een geometrie zoomt de kaart naar die plek (ResultTable). */
-	setContext(ZOOM_CONTEXT, (bbox: Bbox) => {
-		if (map) zoomToBbox(map, bbox);
-	});
+	/* Een zoomknop onder een zoekresultaat (ResultTable, ResultZoom) laat de kaart naar die plek
+	   vliegen en markeert de vormen daar, in plaats van een eerdere markering. Zonder vormen (te
+	   groot om mee te sturen, of een ouder gesprek) zoomt hij alleen. */
+	const zoomToAndHighlight: ZoomToAndHighlight = (bbox, shapes = []) => {
+		if (!map) return;
+		zoomToBbox(map, bbox);
+		highlightShapes(map, shapes);
+	};
+	setContext(ZOOM_AND_HIGHLIGHT_CONTEXT, zoomToAndHighlight);
+
+	/* De markering hoort bij het vorige antwoord: weg bij een nieuwe vraag of een ander gesprek. */
+	$: questionCount = $events.filter((event) => event.type === "question").length;
+	$: questionCount, map && clearHighlight(map);
 
 	/* Onder het laatste antwoord van een beurt over plekken: een knop om ernaar te zoomen. */
 	$: targets = zoomTargets($events, $busy);

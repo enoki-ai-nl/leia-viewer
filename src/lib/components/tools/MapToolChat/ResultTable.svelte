@@ -3,8 +3,16 @@
 	import { _ } from "svelte-i18n";
 	import Location from "carbon-icons-svelte/lib/Location.svelte";
 
-	import { artifactBboxes, artifactColumns, artifactRows, artifactSummary, formatCell, ZOOM_CONTEXT } from "./artifact";
-	import type { Bbox } from "./ui-tools/zoom";
+	import {
+		artifactBboxes,
+		artifactColumns,
+		artifactRows,
+		artifactShapes,
+		artifactSummary,
+		formatCell,
+		ZOOM_AND_HIGHLIGHT_CONTEXT,
+		type ZoomToAndHighlight
+	} from "./artifact";
 
 	/* Het resultaat van een backend-tool als tabel, met een bijschrift erboven. */
 	export let content: unknown;
@@ -15,10 +23,13 @@
 	$: columns = artifactColumns(rows);
 	$: summary = artifactSummary(content, rows.length);
 	$: bboxes = artifactBboxes(content);
+	$: shapes = artifactShapes(content);
 	$: zoomable = bboxes.some(Boolean);
 
-	/* Rijen met een geometrie krijgen een knop die de kaart naar die plek laat vliegen. */
-	const zoomTo = getContext<((bbox: Bbox) => void) | undefined>(ZOOM_CONTEXT);
+	/* Rijen met een geometrie krijgen een knop die de kaart naar die plek laat vliegen en hem markeert. */
+	const zoomToAndHighlight = getContext<ZoomToAndHighlight | undefined>(
+		ZOOM_AND_HIGHLIGHT_CONTEXT
+	);
 </script>
 
 <span class="result__caption">
@@ -32,21 +43,21 @@
 		<table class="data-table">
 			<thead>
 				<tr>
-					{#if zoomable && zoomTo}<th />{/if}
+					{#if zoomable && zoomToAndHighlight}<th />{/if}
 					{#each columns as column}<th>{column}</th>{/each}
 				</tr>
 			</thead>
 			<tbody>
 				{#each rows.slice(0, MAX_ROWS) as row, i}
 					<tr>
-						{#if zoomable && zoomTo}
+						{#if zoomable && zoomToAndHighlight}
 							<td class="data-table__zoom">
 								{#if bboxes[i]}
 									<button
 										type="button"
 										title={$_("tools.chat.zoomToRow")}
 										aria-label={$_("tools.chat.zoomToRow")}
-										on:click={() => zoomTo?.(bboxes[i] ?? [0, 0, 0, 0])}
+										on:click={() => zoomToAndHighlight?.(bboxes[i] ?? [0, 0, 0, 0], [shapes[i] ?? null])}
 									>
 										<Location size={16} />
 									</button>
