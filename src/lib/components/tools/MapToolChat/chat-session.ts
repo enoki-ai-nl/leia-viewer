@@ -310,13 +310,15 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 
 			/* De agent kent de lagen alleen hieruit: `layers` zijn de webservices die hij kan
 			   bevragen, `map_layers` alles waar hij op kan werken, onder de namen die de
-			   tools accepteren. */
+			   tools accepteren, met de dataset waar een laag uit getekend wordt (de backend
+			   controleert die tegen de eigen datasets van de gebruiker). */
 			agent.state = {
 				layers: refs,
 				map_layers: labelLayers(map ? get(map.layers) : []).map(({ label, layer }) => ({
 					name: label,
 					type: layer.config.type,
-					properties: layerProperties(layer)
+					properties: layerProperties(layer),
+					dataset_id: layer.config.settings?.datasetId
 				}))
 			};
 
