@@ -84,7 +84,7 @@ export function createChatSession(getMap: () => Map | undefined): ChatSession {
 	/* Bij elk event opnieuw beginnen: de melding komt pas na SLOW_AFTER_MS stilte. */
 	function restartSlowTimer() {
 		slow.set(false);
-		clearTimeout(slowTimer)
+		clearTimeout(slowTimer);
 		slowTimer = setTimeout(() => slow.set(true), SLOW_AFTER_MS);
 	}
 
