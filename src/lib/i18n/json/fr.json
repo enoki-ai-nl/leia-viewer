@@ -142,7 +142,8 @@
                 "notSignedIn": "Non connecté : aucune clé saisie.",
                 "unknownKey": "Cette clé est inconnue."
             },
-            "zoomToRow": "Afficher sur la carte"
+            "zoomToRow": "Afficher sur la carte",
+            "zoomToResults": "{count, plural, one {Zoomer sur le résultat} other {Zoomer sur les # résultats}}"
         },
         "info": {
             "label": "Information",

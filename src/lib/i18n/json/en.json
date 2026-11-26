@@ -142,7 +142,8 @@
                 "notSignedIn": "Not signed in: no key was entered.",
                 "unknownKey": "This key is not known."
             },
-            "zoomToRow": "Show on the map"
+            "zoomToRow": "Show on the map",
+            "zoomToResults": "{count, plural, one {Zoom to result} other {Zoom to all # results}}"
         },
         "info": {
             "label": "Information",

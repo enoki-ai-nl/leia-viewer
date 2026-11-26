@@ -142,7 +142,8 @@
                 "notSignedIn": "Niet ingelogd: er is geen sleutel ingevuld.",
                 "unknownKey": "Deze sleutel is niet bekend."
             },
-            "zoomToRow": "Toon op de kaart"
+            "zoomToRow": "Toon op de kaart",
+            "zoomToResults": "{count, plural, one {Zoom naar resultaat} other {Zoom naar alle # resultaten}}"
         },
         "info": {
             "label": "Informatie",

@@ -11,7 +11,8 @@
 	import ExportDialog from "./ExportDialog.svelte";
 	import SensitiveDataWarning, { warningAccepted } from "./SensitiveDataWarning.svelte";
 	import UiToolSettings from "./ui-tools/UiToolSettings.svelte";
-	import { ZOOM_CONTEXT } from "./artifact";
+	import ResultZoom from "./ResultZoom.svelte";
+	import { ZOOM_CONTEXT, zoomTargets } from "./artifact";
 	import { zoomToBbox, type Bbox } from "./ui-tools/zoom";
 
 	export let map: Map | undefined;
@@ -24,6 +25,9 @@
 	setContext(ZOOM_CONTEXT, (bbox: Bbox) => {
 		if (map) zoomToBbox(map, bbox);
 	});
+
+	/* Onder het laatste antwoord van een beurt over plekken: een knop om ernaar te zoomen. */
+	$: targets = zoomTargets($events, $busy);
 
 	/* Het keuzemenu voor wat de assistent zonder te vragen mag doen. */
 	let settingsOpen = false;
@@ -73,8 +77,11 @@
 		{/if}
 
 		<div bind:this={bodyEl} class="chat-panel__body">
-			{#each $events as event}
+			{#each $events as event, i}
 				<ChatEvent {event} {session} />
+				{#if targets[i]}
+					<ResultZoom target={targets[i]} />
+				{/if}
 			{/each}
 
 			{#if $busy}
